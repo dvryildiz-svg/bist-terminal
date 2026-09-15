@@ -153,10 +153,9 @@ def haberleri_ve_kap_getir(hisse_kodu):
 
 
 def akilli_analiz_uret(df, haberler, kap_bildirimleri):
-   nedenler = []
+  nedenler = []
   puan = 0
 
-  # Teknik Analiz Değerlendirmesi
   son_fiyat = df["Kapanis"].iloc[-1]
   delta = df["Kapanis"].diff()
   gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
@@ -186,19 +185,18 @@ def akilli_analiz_uret(df, haberler, kap_bildirimleri):
 
   if son_fiyat > son_sma50:
     puan += 1
-    nedenler.append("Fiyat 50 günlük hareketli ortalamanın üzerinde (Kısa pozitif trend).")
+    nedenler.append("Fiyat 50 günlük hareketli ortalamanın üzerinde.")
   else:
     puan -= 1
-    nedenler.append("Fiyat 50 günlük hareketli ortalamanın altında (Kısa zayıf seyir).")
+    nedenler.append("Fiyat 50 günlük hareketli ortalamanın altında.")
 
   if son_fiyat > son_sma200:
     puan += 2
-    nedenler.append("Fiyat 200 günlük ana trend çizgisinin üzerinde (Uzun vade güçlü).")
+    nedenler.append("Fiyat 200 günlük ana trend çizgisinin üzerinde.")
   else:
     puan -= 2
-    nedenler.append("Fiyat 200 günlük ana trend çizgisinin altında (Uzun vade baskı altında).")
+    nedenler.append("Fiyat 200 günlük ana trend çizgisinin altında.")
 
-  # Haber ve KAP Duygu Analizi
   olumlu_kelimeler = [
       "sözleşme",
       "ihale",
@@ -220,7 +218,6 @@ def akilli_analiz_uret(df, haberler, kap_bildirimleri):
       "kriz",
       "düşüş",
       "kayıp",
-      "şüpheli",
   ]
 
   haber_skoru = 0
@@ -239,19 +236,17 @@ def akilli_analiz_uret(df, haberler, kap_bildirimleri):
   if haber_skoru > 0:
     puan += 2
     nedenler.append(
-        f"Son KAP bildirimleri ve haber akışında olumlu ton hakim (Skor:"
-        f" +{haber_skoru})."
+        f"KAP bildirimleri ve haber akışında olumlu ton hakim (Skor: +"
+        f"{haber_skoru})."
     )
   elif haber_skoru < 0:
     puan -= 2
     nedenler.append(
-        f"Haber akışında ve bildirimlerde temkinli/olumsuz başlıklar var (Skor:"
-        f" {haber_skoru})."
+        f"Haber akışında temkinli/olumsuz başlıklar var (Skor: {haber_skoru})."
     )
   else:
-    nedenler.append("Haber akışında nötr ve dengeli bir akış gözleniyor.")
+    nedenler.append("Haber akışında nötr ve dengeli bir seyir var.")
 
-  # Karar Belirleme
   if puan >= 3:
     karar = "AL"
     renk = "🟢"
@@ -265,7 +260,7 @@ def akilli_analiz_uret(df, haberler, kap_bildirimleri):
   return karar, renk, nedenler, son_fiyat, son_rsi, son_sma50, son_sma200
 
 
-with st.spinner(f"{secilen_hisse} verileri, haberler ve akıllı analiz işleniyor..."):
+with st.spinner(f"{secilen_hisse} verileri ve akıllı analiz işleniyor..."):
   df = veri_cek_ve_hazirla(secilen_hisse)
   haberler, kap_bildirimleri = haberleri_ve_kap_getir(secilen_hisse)
 
@@ -274,14 +269,12 @@ if df is not None and not df.empty and "Kapanis" in df.columns:
       akilli_analiz_uret(df, haberler, kap_bildirimleri)
   )
 
-  # Üst Özet Metrikleri
   col1, col2, col3, col4 = st.columns(4)
   col1.metric("Son Fiyat", f"{son_fiyat:.2f} TL")
   col2.metric("RSI (14)", f"{son_rsi:.2f}")
   col3.metric("SMA 50", f"{son_sma50:.2f} TL")
   col4.metric("SMA 200", f"{son_sma200:.2f} TL")
 
-  # Akıllı Karar Paneli
   st.markdown("---")
   st.subheader(f"🧠 Akıllı Karar Önerisi: {renk} **{karar}**")
   with st.expander(
