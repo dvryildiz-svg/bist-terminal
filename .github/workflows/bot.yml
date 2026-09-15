@@ -1,0 +1,30 @@
+name: BIST KAP Otomatik Bildirim Botu
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Kodlari Kopyala
+        uses: actions/checkout@v4
+
+      - name: Python Kurulumu
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Kutuphaneleri Yukle
+        run: |
+          pip install feedparser
+
+      - name: Botu Calistir
+        env:
+          MAIL_USER: ${{ secrets.MAIL_USER }}
+          MAIL_PASS: ${{ secrets.MAIL_PASS }}
+          ALICI_MAIL: ${{ secrets.ALICI_MAIL }}
+        run: |
+          python bot.py
