@@ -1,218 +1,54 @@
-import datetime
+import os
+import smtplib
+from email.message import EmailMessage
 from feedparser import parse
-from isyatirimhisse import fetch_stock_data
-import pandas as streamlit_pandas
-import streamlit as st
 
-# Sayfa Yapılandırması
-st.set_page_config(
-    page_title="BİST Profesyonel Karar Destek Terminali",
-    page_icon="📈",
-    layout="wide",
-)
+# GitHub Secrets'tan gelen verileri alıyoruz
+ALICI_MAIL = os.environ.get("ALICI_MAIL")
+GMAIL_USER = os.environ.get("MAIL_USER")
+GMAIL_PASS = os.environ.get("MAIL_PASS")
 
-st.title("📈 BİST Profesyonel Simülasyon ve Karar Destek Terminali")
-st.markdown(
-    "İş Yatırım veritabanından anlık veriler, teknik indikatörler ve canlı"
-    " piyasa haberleri."
-)
-
-# Kapsamlı BİST / Popüler Hisse Listesi
-bist_hisseler = sorted([
-    "AEFES",
-    "AGHOL",
-    "AHGAZ",
-    "AKBNK",
-    "AKCNS",
-    "AKFGY",
-    "AKSA",
-    "AKSEN",
-    "ALARK",
-    "ALBRK",
-    "ALFAS",
-    "ARCLK",
-    "ASELS",
-    "ASTOR",
-    "BERA",
-    "BIENY",
-    "BIMAS",
-    "BOBET",
-    "BRSAN",
-    "BRYAT",
-    "BUCIM",
-    "CCOLA",
-    "CIMSA",
-    "CWENE",
-    "DOAS",
-    "DOHOL",
-    "ECZYT",
-    "EGEEN",
-    "EKGYO",
-    "ENERY",
-    "ENKAI",
-    "EREGL",
-    "EUPWR",
-    "FROTO",
-    "GARAN",
-    "GESAN",
-    "GLYHO",
-    "GUBRF",
-    "HEKTS",
-    "ISCTR",
-    "KCHOL",
-    "KONTR",
-    "KOZAA",
-    "KOZAL",
-    "KRDMD",
-    "ODAS",
-    "PETKM",
-    "PGSUS",
-    "SAHOL",
-    "SASA",
-    "SISE",
-    "TAVHL",
-    "THYAO",
-    "TOASO",
-    "TUPRS",
-    "YKBNK",
-])
-
-default_index = bist_hisseler.index("SASA") if "SASA" in bist_hisseler else 0
-
-secilen_hisse = st.selectbox(
-    "Analiz Etmek İstediğiniz Hisse Senedini Seçin (İsim yazarak"
-    " arayabilirsiniz):",
-    bist_hisseler,
-    index=default_index,
-)
-
-# Tarih Aralığı (Son 1 yıl)
-bitis_tarihi = datetime.datetime.now().strftime("%d-%m-%Y")
-baslangic_tarihi = (
-    datetime.datetime.now() - datetime.timedelta(days=365)
-).strftime("%d-%m-%Y")
+# Takip edilecek BIST hisseleri listesi
+HISSELER = ["SASA", "THYAO", "EREGL", "KCHOL", "GARAN"]
 
 
-@st.cache_data(ttl=3600)
-def veri_cek_ve_hazirla(hisse):
-  try:
-    df = fetch_stock_data(
-        symbols=[hisse], start_date=baslangic_tarihi, end_date=bitis_tarihi
-    )
-    if df is not None and not df.empty:
-      df.columns = [str(col).upper() for col in df.columns]
-      tarih_kolonu = next(
-          (c for c in df.columns if "TARIH" in c or "DATE" in c), None
-      )
-      kapanis_kolonu = next(
-          (
-              c
-              for c in df.columns
-              if "KAP" in c or "CLOSE" in c or "FIYAT" in c
-          ),
-          None,
-      )
+def bulten_olustur():
+  rapor = "🤖 BİST Otomatik KAP ve Haber Bildirim Raporu\n\n"
+  for hisse in HISSELER:
+    url_kap = f"https://news.google.com/rss/search?q={hisse}+KAP+bildirimi+özel+durum&hl=TR&gl=TR&ceid=TR:tr"
+    feed = parse(url_kap)
 
-      if tarih_kolonu and kapanis_kolonu:
-        df["Tarih"] = streamlit_pandas.to_datetime(
-            df[tarih_kolonu], format="%d-%m-%Y", errors="coerce"
-        )
-        df = df.dropna(subset=["Tarih"]).sort_values("Tarih")
-        df["Kapanis"] = streamlit_pandas.to_numeric(
-            df[kapanis_kolonu], errors="coerce"
-        )
-        return df
-  except Exception as e:
-    st.error(f"Veri çekilirken hata oluştu: {e}")
-  return None
-
-
-@st.cache_data(ttl=1800)
-def haberleri_getir(hisse_kodu):
-  try:
-    url = f"https://news.google.com/rss/search?q={hisse_kodu}+hisse+borsa&hl=TR&gl=TR&ceid=TR:tr"
-    feed = parse(url)
-    haberler = []
-    for entry in feed.entries[:5]:
-      zaman = getattr(entry, "published", "Güncel")
-      haberler.append(
-          {"baslik": entry.title, "link": entry.link, "zaman": zaman}
-      )
-    return haberler
-  except:
-    return []
-
-
-with st.spinner(
-    f"{secilen_hisse} için veriler ve piyasa akışı yükleniyor..."
-):
-  df = veri_cek_ve_hazirla(secilen_hisse)
-  haberler = haberleri_getir(secilen_hisse)
-
-if df is not None and not df.empty and "Kapanis" in df.columns:
-  delta = df["Kapanis"].diff()
-  gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-  loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-  rs = gain / loss
-  df["RSI"] = 100 - (100 / (1 + rs))
-
-  df["SMA50"] = df["Kapanis"].rolling(window=50).mean()
-  df["SMA200"] = df["Kapanis"].rolling(window=200).mean()
-
-  son_fiyat = df["Kapanis"].iloc[-1]
-  son_rsi = df["RSI"].iloc[-1]
-  son_sma50 = df["SMA50"].iloc[-1]
-  son_sma200 = df["SMA200"].iloc[-1]
-
-  col1, col2, col3, col4 = st.columns(4)
-  col1.metric("Son Fiyat", f"{son_fiyat:.2f} TL")
-  col2.metric("RSI (14)", f"{son_rsi:.2f}")
-  col3.metric("SMA 50", f"{son_sma50:.2f} TL")
-  col4.metric("SMA 200", f"{son_sma200:.2f} TL")
-
-  st.subheader(f"{secilen_hisse} Fiyat ve Hareketli Ortalamalar")
-  st.line_chart(df.set_index("Tarih")[["Kapanis", "SMA50", "SMA200"]])
-
-  st.subheader("🎯 Kapsamlı Yönetici Özeti & Stratejik Analiz")
-
-  col_ozet1, col_ozet2 = st.columns([2, 1])
-
-  with col_ozet1:
-    if son_sma50 > son_sma200 and son_fiyat > son_sma50:
-      st.success(
-          f"**[GÜÇLÜ BOĞA PİYASASI / AL-TUT]**\n\n- **Trend Durumu:**"
-          f" {secilen_hisse} hissesinde 50 günlük hareketli ortalama"
-          f" ({son_sma50:.2f} TL), 200 günlük ortalamanın ({son_sma200:.2f}"
-          " TL) üzerindedir.\n- **Momentum:** RSI göstergesi"
-          f" {son_rsi:.2f} seviyesinde bulunuyor."
-      )
-    elif son_fiyat < son_sma200:
-      st.warning(
-          f"**[TEMKİNLİ YAKLAŞIM / NEGATİF SEYİR]**\n\n- **Trend Durumu:**"
-          " Fiyat, uzun vadeli 200 günlük ortalamanın"
-          f" ({son_sma200:.2f} TL) altında kalmaktadır."
-      )
+    rapor += f"📌 HİSSE: {hisse}\n"
+    if feed.entries:
+      for entry in feed.entries[:2]:  # Son 2 bildirim
+        zaman = getattr(entry, "published", "Güncel")
+        rapor += f" - [{zaman}] {entry.title}\n   {entry.link}\n"
     else:
-      st.info(
-          "**[NÖTR / YATAY SIKIŞMA ALANI]**\n\n- **Trend Durumu:** Fiyat, 50"
-          " ve 200 günlük ortalamalar arasında."
-      )
+      rapor += " - Son dönemde yeni KAP bildirimi bulunamadı.\n"
+    rapor += "-" * 40 + "\n"
+  return rapor
 
-  with col_ozet2:
-    st.markdown("### 📊 Kısa İstatistikler")
-    st.markdown(f"- **1 Yıllık En Yüksek:** {df['Kapanis'].max():.2f} TL")
-    st.markdown(f"- **1 Yıllık En Düşük:** {df['Kapanis'].min():.2f} TL")
-    st.markdown(
-        f"- **Volatilite (14G):** %{df['Kapanis'].pct_change().std()*100:.2f}"
-    )
 
-  st.subheader(
-      f"📰 {secilen_hisse} ile İlgili Son Dakika & Piyasa Gelişmeleri"
-  )
-  if haberler:
-    for h in haberler:
-      st.markdown(f"- **[{h['zaman']}]** [{h['baslik']}]({h['link']})")
-  else:
-    st.info("Bu hisse senedi için güncel haber akışı bulunamadı.")
-else:
-  st.warning("Seçilen hisse için veri işlenemedi veya sütun yapısı uyumsuz.")
+def mail_gonder(icerik):
+  if not GMAIL_USER or not GMAIL_PASS or not ALICI_MAIL:
+    print("Mail bilgileri veya alıcı eksik!")
+    return
+
+  msg = EmailMessage()
+  msg["Subject"] = "🔔 Günlük BİST & KAP Otomatik Bildirim Raporu"
+  msg["From"] = GMAIL_USER
+  msg["To"] = ALICI_MAIL  # Birden fazla adresi virgülle destekler
+  msg.set_content(icerik)
+
+  try:
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+      server.login(GMAIL_USER, GMAIL_PASS)
+      server.send_message(msg)
+    print("E-posta başarıyla gönderildi!")
+  except Exception as e:
+    print(f"Mail gönderilemedi: {e}")
+
+
+if __name__ == "__main__":
+  rapor_metni = bulten_olustur()
+  mail_gonder(rapor_metni)
