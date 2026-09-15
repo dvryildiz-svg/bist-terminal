@@ -160,9 +160,9 @@ def akilli_analiz_hesapla(df, kap_bildirimleri, haberler):
   son_sma50 = df["SMA50"].iloc[-1]
   son_sma200 = df["SMA200"].iloc[-1]
 
-  # Destek ve Direnç (İdeal Alım / Satım Seviyeleri tahmini)
-  ideal_alim = son_fiyat * 0.97   % Yakın destek (%3 altı)
-  ideal_satim = son_fiyat * 1.05  % Kar al direnci (%5 üstü)
+  # İdeal Alım ve Satım Seviyeleri
+  ideal_alim = son_fiyat * 0.97
+  ideal_satim = son_fiyat * 1.05
 
   if son_rsi < 35:
     puan += 2
@@ -235,7 +235,6 @@ def akilli_analiz_hesapla(df, kap_bildirimleri, haberler):
   )
 
 
-# Sekme Yapısı
 tab_tekli, tab_matris = st.tabs(
     ["📊 Tekli Hisse & Derin Analiz", "🌐 Tüm Piyasa Sinyal Matrisi (Tarama)"]
 )
@@ -267,7 +266,7 @@ with tab_tekli:
 
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Son Fiyat", f"{son_fiyat:.2f} TL")
-    col2.metric("RSI (14)", f"{son_rsi:.2f}")
+    col2.metric("RSI (14)", f"{son_rsi:.1f}")
     col3.metric("İdeal Alım (Destek)", f"{ideal_alim:.2f} TL")
     col4.metric("İdeal Satış (Direnç)", f"{ideal_satim:.2f} TL")
 
@@ -299,8 +298,7 @@ with tab_matris:
   st.subheader("🌐 BİST Genel Tarama ve Fırsat Matrisi")
   st.markdown(
       "Sistemdeki tüm hisseler taranarak anlık sinyaller ve ideal seviyeler"
-      " hesaplanıyor. Bu işlem internet hızına bağlı olarak 1-2 dakika"
-      " sürebilir."
+      " hesaplanıyor."
   )
 
   if st.button("🚀 Tüm Piyasayı Tara ve Matrisi Oluştur"):
