@@ -3,24 +3,22 @@ import smtplib
 from email.message import EmailMessage
 from feedparser import parse
 
-# Alınacak e-posta adresi (GitHub Secret'tan veya doğrudan buraya yazılabilir)
-ALICI_MAIL = os.environ.get("ALICI_MAIL", "senin_mailadresin@gmail.com")
+ALICI_MAIL = os.environ.get("ALICI_MAIL")
 GMAIL_USER = os.environ.get("MAIL_USER")
 GMAIL_PASS = os.environ.get("MAIL_PASS")
 
-# Takip edilecek örnek popüler hisseler
 HISSELER = ["SASA", "THYAO", "EREGL", "KCHOL", "GARAN"]
 
 
 def bulten_olustur():
-  rapor = ""
+  rapor = "🤖 BİST Otomatik KAP ve Haber Bildirim Raporu\n\n"
   for hisse in HISSELER:
     url_kap = f"https://news.google.com/rss/search?q={hisse}+KAP+bildirimi+özel+durum&hl=TR&gl=TR&ceid=TR:tr"
     feed = parse(url_kap)
 
     rapor += f"📌 HİSSE: {hisse}\n"
     if feed.entries:
-      for entry in feed.entries[:2]:  # Son 2 bildirim
+      for entry in feed.entries[:2]:
         zaman = getattr(entry, "published", "Güncel")
         rapor += f" - [{zaman}] {entry.title}\n   {entry.link}\n"
     else:
@@ -30,8 +28,8 @@ def bulten_olustur():
 
 
 def mail_gonder(icerik):
-  if not GMAIL_USER or not GMAIL_PASS:
-    print("Mail bilgileri eksik!")
+  if not GMAIL_USER or not GMAIL_PASS or not ALICI_MAIL:
+    print("Mail bilgileri veya alıcı eksik!")
     return
 
   msg = EmailMessage()
