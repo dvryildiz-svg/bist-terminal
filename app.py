@@ -5,15 +5,15 @@ import pandas as streamlit_pandas
 import streamlit as st
 
 st.set_page_config(
-    page_title="BİST Profesyonel Karar Destek & KAP Terminali",
+    page_title="BİST Akıllı Karar Destek & KAP Terminali",
     page_icon="📈",
     layout="wide",
 )
 
-st.title("📈 BİST Profesyonel Simülasyon ve Karar Destek Terminali")
+st.title("📈 BİST Akıllı Karar Destek ve Simülasyon Terminali")
 st.markdown(
-    "İş Yatırım anlık verileri, teknik indikatörler, canlı piyasa haberleri ve"
-    " KAP bildirimleri."
+    "Teknik indikatörler, haber duygu analizi ve gerekçelendirilmiş AL/SAT/TUT"
+    " sinyalleri."
 )
 
 bist_hisseler = sorted([
@@ -152,32 +152,146 @@ def haberleri_ve_kap_getir(hisse_kodu):
     return [], []
 
 
-with st.spinner(f"{secilen_hisse} verileri ve resmi bildirimler yükleniyor..."):
-  df = veri_cek_ve_hazirla(secilen_hisse)
-  haberler, kap_bildirimleri = haberleri_ve_kap_getir(secilen_hisse)
+def akilli_analiz_uret(df, haberler, kap_bildirimleri):
+   nedenler = []
+  puan = 0
 
-if df is not None and not df.empty and "Kapanis" in df.columns:
+  # Teknik Analiz Değerlendirmesi
+  son_fiyat = df["Kapanis"].iloc[-1]
   delta = df["Kapanis"].diff()
   gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
   loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
   rs = gain / loss
   df["RSI"] = 100 - (100 / (1 + rs))
+  son_rsi = df["RSI"].iloc[-1]
 
   df["SMA50"] = df["Kapanis"].rolling(window=50).mean()
   df["SMA200"] = df["Kapanis"].rolling(window=200).mean()
-
-  son_fiyat = df["Kapanis"].iloc[-1]
-  son_rsi = df["RSI"].iloc[-1]
   son_sma50 = df["SMA50"].iloc[-1]
   son_sma200 = df["SMA200"].iloc[-1]
 
+  if son_rsi < 35:
+    puan += 2
+    nedenler.append(
+        f"RSI aşırı satım bölgesinde ({son_rsi:.1f}), toparlanma potansiyeli"
+        " yüksek."
+    )
+  elif son_rsi > 65:
+    puan -= 2
+    nedenler.append(
+        f"RSI aşırı alım bölgesinde ({son_rsi:.1f}), kar satışı riski var."
+    )
+  else:
+    nedenler.append(f"RSI nötr seviyede ({son_rsi:.1f}).")
+
+  if son_fiyat > son_sma50:
+    puan += 1
+    nedenler.append("Fiyat 50 günlük hareketli ortalamanın üzerinde (Kısa pozitif trend).")
+  else:
+    puan -= 1
+    nedenler.append("Fiyat 50 günlük hareketli ortalamanın altında (Kısa zayıf seyir).")
+
+  if son_fiyat > son_sma200:
+    puan += 2
+    nedenler.append("Fiyat 200 günlük ana trend çizgisinin üzerinde (Uzun vade güçlü).")
+  else:
+    puan -= 2
+    nedenler.append("Fiyat 200 günlük ana trend çizgisinin altında (Uzun vade baskı altında).")
+
+  # Haber ve KAP Duygu Analizi
+  olumlu_kelimeler = [
+      "sözleşme",
+      "ihale",
+      "kar",
+      "rekor",
+      "artış",
+      "onay",
+      "başarı",
+      "yatırım",
+      "büyüme",
+      "güçlü",
+  ]
+  olumsuz_kelimeler = [
+      "zarar",
+      "ceza",
+      "soruşturma",
+      "dava",
+      "borç",
+      "kriz",
+      "düşüş",
+      "kayıp",
+      "şüpheli",
+  ]
+
+  haber_skoru = 0
+  taranan_metinler = [k["baslik"].lower() for k in kap_bildirimleri] + [
+      h["baslik"].lower() for h in haberler
+  ]
+
+  for metin in taranan_metinler:
+    for kelime in olumlu_kelimeler:
+      if kelime in metin:
+        haber_skoru += 1
+    for kelime in olumsuz_kelimeler:
+      if kelime in metin:
+        haber_skoru -= 1
+
+  if haber_skoru > 0:
+    puan += 2
+    nedenler.append(
+        f"Son KAP bildirimleri ve haber akışında olumlu ton hakim (Skor:"
+        f" +{haber_skoru})."
+    )
+  elif haber_skoru < 0:
+    puan -= 2
+    nedenler.append(
+        f"Haber akışında ve bildirimlerde temkinli/olumsuz başlıklar var (Skor:"
+        f" {haber_skoru})."
+    )
+  else:
+    nedenler.append("Haber akışında nötr ve dengeli bir akış gözleniyor.")
+
+  # Karar Belirleme
+  if puan >= 3:
+    karar = "AL"
+    renk = "🟢"
+  elif puan <= -2:
+    karar = "SAT"
+    renk = "🔴"
+  else:
+    karar = "TUT (NÖTR)"
+    renk = "🟡"
+
+  return karar, renk, nedenler, son_fiyat, son_rsi, son_sma50, son_sma200
+
+
+with st.spinner(f"{secilen_hisse} verileri, haberler ve akıllı analiz işleniyor..."):
+  df = veri_cek_ve_hazirla(secilen_hisse)
+  haberler, kap_bildirimleri = haberleri_ve_kap_getir(secilen_hisse)
+
+if df is not None and not df.empty and "Kapanis" in df.columns:
+  karar, renk, nedenler, son_fiyat, son_rsi, son_sma50, son_sma200 = (
+      akilli_analiz_uret(df, haberler, kap_bildirimleri)
+  )
+
+  # Üst Özet Metrikleri
   col1, col2, col3, col4 = st.columns(4)
   col1.metric("Son Fiyat", f"{son_fiyat:.2f} TL")
   col2.metric("RSI (14)", f"{son_rsi:.2f}")
   col3.metric("SMA 50", f"{son_sma50:.2f} TL")
   col4.metric("SMA 200", f"{son_sma200:.2f} TL")
 
-  st.subheader(f"{secilen_hisse} Fiyat ve Hareketli Ortalamalar")
+  # Akıllı Karar Paneli
+  st.markdown("---")
+  st.subheader(f"🧠 Akıllı Karar Önerisi: {renk} **{karar}**")
+  with st.expander(
+      "🔍 Bu Kararın Gerekçeleri (Teknik + Haber Duygu Analizi)", expanded=True
+  ):
+    for neden in nedenler:
+      st.markdown(f"- {neden}")
+  st.markdown("---")
+
+  st.subheader(f"{secilen_hisse} Fiyat Grafiği")
   st.line_chart(df.set_index("Tarih")[["Kapanis", "SMA50", "SMA200"]])
 
   tab_kap, tab_haber = st.tabs(
