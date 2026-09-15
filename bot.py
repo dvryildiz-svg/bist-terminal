@@ -12,9 +12,9 @@ GMAIL_PASS = os.environ.get("MAIL_PASS")
 HISSELER = ["SASA", "THYAO", "EREGL", "KCHOL", "GARAN"]
 
 
-def analiz_uret_ve_bulten_hazirla():
+def toplu_matris_ve_bulten_hazirla():
   rapor = (
-      "🤖 BİST Akıllı Karar Destek & Otomatik Bildirim Raporu\n"
+      "🤖 BİST Günlük Özet Sinyal ve Fırsat Matrisi Raporu\n"
       "=" * 55
       + "\n\n"
   )
@@ -22,7 +22,6 @@ def analiz_uret_ve_bulten_hazirla():
   for hisse in HISSELER:
     rapor += f"📌 HİSSE: {hisse}\n"
     try:
-      # Teknik ve Haber Verisi Çekimi
       bitis = pd.Timestamp.now().strftime("%d-%m-%Y")
       baslangic = (pd.Timestamp.now() - pd.Timedelta(days=120)).strftime(
           "%d-%m-%Y"
@@ -43,7 +42,6 @@ def analiz_uret_ve_bulten_hazirla():
           df["Kapanis"] = pd.to_numeric(df[k_col], errors="coerce")
           son_fiyat = df["Kapanis"].iloc[-1]
 
-          # Basit İndikatör Kontrolü
           sma50 = df["Kapanis"].rolling(window=min(30, len(df))).mean().iloc[-1]
           delta = df["Kapanis"].diff()
           gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
@@ -52,7 +50,9 @@ def analiz_uret_ve_bulten_hazirla():
           rsi = 100 - (100 / (1 + rs))
           son_rsi = rsi.iloc[-1] if not rsi.empty else 50
 
-          # Haber ve KAP duygu taraması
+          ideal_alim = son_fiyat * 0.97
+          ideal_satim = son_fiyat * 1.05
+
           url_kap = f"https://news.google.com/rss/search?q={hisse}+KAP+bildirimi+özel+durum&hl=TR&gl=TR&ceid=TR:tr"
           feed = parse(url_kap)
 
@@ -80,7 +80,6 @@ def analiz_uret_ve_bulten_hazirla():
                 if ol in baslik_lower:
                   haber_skoru -= 1
 
-          # Sinyal Kararı
           puan = 0
           if son_rsi < 35:
             puan += 1
@@ -99,20 +98,24 @@ def analiz_uret_ve_bulten_hazirla():
           else:
             karar = "TUT (NÖTR)"
 
-          rapor += f" - Fiyat: {son_fiyat:.2f} TL | RSI: {son_rsi:.1f}\n"
-          rapor += f" - Karar Önerisi: [{karar}]\n"
-          rapor += f" - Son Gelişmeler / Bildirimler:\n"
+          rapor += f" - Son Fiyat: {son_fiyat:.2f} TL | RSI: {son_rsi:.1f}\n"
+          rapor += f" - Karar Sinyali: [{karar}]\n"
+          rapor += (
+              f" - İdeal Seviyeler -> Alım (Destek): {ideal_alim:.2f} TL | Satış"
+              f" (Direnç): {ideal_satim:.2f} TL\n"
+          )
+          rapor += f" - Son Gelişmeler / Haberler:\n"
           if bildirim_metinleri:
             for b in bildirim_metinleri:
               rapor += f"   * {b}\n"
           else:
-            rapor += "   * Yakın zamanda yeni KAP bildirimi bulunamadı.\n"
+            rapor += "   * Yeni KAP bildirimi yok.\n"
         else:
-          rapor += " - Teknik veri sütunları işlenemedi.\n"
+          rapor += " - Veri sütunları işlenemedi.\n"
       else:
         rapor += " - Fiyat verisi alınamadı.\n"
-    except Exception as e:
-      rapor += f" - Analiz sırasında hata oluştu.\n"
+    except:
+      rapor += " - Analiz hatası oluştu.\n"
 
     rapor += "-" * 50 + "\n"
 
@@ -121,11 +124,11 @@ def analiz_uret_ve_bulten_hazirla():
 
 def mail_gonder(icerik):
   if not GMAIL_USER or not GMAIL_PASS or not ALICI_MAIL:
-    print("Mail bilgileri veya alıcı eksik!")
+    print("Mail bilgileri eksik!")
     return
 
   msg = EmailMessage()
-  msg["Subject"] = "🔔 Günlük BİST Akıllı Karar & KAP Bildirim Raporu"
+  msg["Subject"] = "🔔 Günlük BİST Sinyal Matrisi & Fırsat Raporu"
   msg["From"] = GMAIL_USER
   msg["To"] = ALICI_MAIL
   msg.set_content(icerik)
@@ -140,5 +143,5 @@ def mail_gonder(icerik):
 
 
 if __name__ == "__main__":
-  rapor_metni = analiz_uret_ve_bulten_hazirla()
+  rapor_metni = toplu_matris_ve_bulten_hazirla()
   mail_gonder(rapor_metni)
