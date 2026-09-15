@@ -1,19 +1,19 @@
 import datetime
 from feedparser import parse
 from isyatirimhisse import fetch_stock_data
-import pandas as streamlit_pandas
+import pandas as pd
 import streamlit as st
 
 st.set_page_config(
-    page_title="BİST Akıllı Karar Destek & KAP Terminali",
+    page_title="BİST Akıllı Karar Destek & Sinyal Matrisi",
     page_icon="📈",
     layout="wide",
 )
 
-st.title("📈 BİST Akıllı Karar Destek ve Simülasyon Terminali")
+st.title("📈 BİST Profesyonel Karar Destek ve Sinyal Matrisi")
 st.markdown(
-    "Teknik indikatörler, haber duygu analizi ve gerekçelendirilmiş AL/SAT/TUT"
-    " sinyalleri."
+    "Teklifler, teknik indikatörler, haber duygu analizi ve tüm piyasa tarama"
+    " modülü."
 )
 
 bist_hisseler = sorted([
@@ -75,13 +75,6 @@ bist_hisseler = sorted([
     "YKBNK",
 ])
 
-default_index = bist_hisseler.index("SASA") if "SASA" in bist_hisseler else 0
-secilen_hisse = st.selectbox(
-    "Analiz Etmek İstediğiniz Hisse Senedini Seçin:",
-    bist_hisseler,
-    index=default_index,
-)
-
 bitis_tarihi = datetime.datetime.now().strftime("%d-%m-%Y")
 baslangic_tarihi = (
     datetime.datetime.now() - datetime.timedelta(days=365)
@@ -109,16 +102,14 @@ def veri_cek_ve_hazirla(hisse):
       )
 
       if tarih_kolonu and kapanis_kolonu:
-        df["Tarih"] = streamlit_pandas.to_datetime(
+        df["Tarih"] = pd.to_datetime(
             df[tarih_kolonu], format="%d-%m-%Y", errors="coerce"
         )
         df = df.dropna(subset=["Tarih"]).sort_values("Tarih")
-        df["Kapanis"] = streamlit_pandas.to_numeric(
-            df[kapanis_kolonu], errors="coerce"
-        )
+        df["Kapanis"] = pd.to_numeric(df[kapanis_kolonu], errors="coerce")
         return df
-  except Exception as e:
-    st.error(f"Veri çekilirken hata oluştu: {e}")
+  except:
+    pass
   return None
 
 
@@ -152,7 +143,7 @@ def haberleri_ve_kap_getir(hisse_kodu):
     return [], []
 
 
-def akilli_analiz_uret(df, haberler, kap_bildirimleri):
+def akilli_analiz_hesapla(df, kap_bildirimleri, haberler):
   nedenler = []
   puan = 0
 
@@ -169,83 +160,57 @@ def akilli_analiz_uret(df, haberler, kap_bildirimleri):
   son_sma50 = df["SMA50"].iloc[-1]
   son_sma200 = df["SMA200"].iloc[-1]
 
+  # Destek ve Direnç (İdeal Alım / Satım Seviyeleri tahmini)
+  ideal_alim = son_fiyat * 0.97   % Yakın destek (%3 altı)
+  ideal_satim = son_fiyat * 1.05  % Kar al direnci (%5 üstü)
+
   if son_rsi < 35:
     puan += 2
     nedenler.append(
-        f"RSI aşırı satım bölgesinde ({son_rsi:.1f}), toparlanma potansiyeli"
-        " yüksek."
+        f"RSI aşırı satımda ({son_rsi:.1f}), tepki alımı gelebilir."
     )
   elif son_rsi > 65:
     puan -= 2
-    nedenler.append(
-        f"RSI aşırı alım bölgesinde ({son_rsi:.1f}), kar satışı riski var."
-    )
+    nedenler.append(f"RSI aşırı alımda ({son_rsi:.1f}), dikkatli olunmalı.")
   else:
-    nedenler.append(f"RSI nötr seviyede ({son_rsi:.1f}).")
+    nedenler.append(f"RSI nötr bölgede ({son_rsi:.1f}).")
 
   if son_fiyat > son_sma50:
     puan += 1
-    nedenler.append("Fiyat 50 günlük hareketli ortalamanın üzerinde.")
+    nedenler.append("Fiyat 50 günlük ortalamanın üzerinde.")
   else:
     puan -= 1
-    nedenler.append("Fiyat 50 günlük hareketli ortalamanın altında.")
+    nedenler.append("Fiyat 50 günlük ortalamanın altında.")
 
   if son_fiyat > son_sma200:
     puan += 2
-    nedenler.append("Fiyat 200 günlük ana trend çizgisinin üzerinde.")
+    nedenler.append("Uzun vadeli ana trend pozitif.")
   else:
     puan -= 2
-    nedenler.append("Fiyat 200 günlük ana trend çizgisinin altında.")
+    nedenler.append("Uzun vadeli ana trend baskı altında.")
 
-  olumlu_kelimeler = [
-      "sözleşme",
-      "ihale",
-      "kar",
-      "rekor",
-      "artış",
-      "onay",
-      "başarı",
-      "yatırım",
-      "büyüme",
-      "güçlü",
-  ]
-  olumsuz_kelimeler = [
-      "zarar",
-      "ceza",
-      "soruşturma",
-      "dava",
-      "borç",
-      "kriz",
-      "düşüş",
-      "kayıp",
-  ]
-
+  olumlu = ["sözleşme", "ihale", "kar", "rekor", "artış", "onay", "yatırım"]
+  olumsuz = ["zarar", "ceza", "soruşturma", "dava", "borç", "düşüş"]
   haber_skoru = 0
-  taranan_metinler = [k["baslik"].lower() for k in kap_bildirimleri] + [
+  tarananlar = [k["baslik"].lower() for k in kap_bildirimleri] + [
       h["baslik"].lower() for h in haberler
   ]
-
-  for metin in taranan_metinler:
-    for kelime in olumlu_kelimeler:
-      if kelime in metin:
+  for m in tarananlar:
+    for o in olumlu:
+      if o in m:
         haber_skoru += 1
-    for kelime in olumsuz_kelimeler:
-      if kelime in metin:
+    for ol in olumsuz:
+      if ol in m:
         haber_skoru -= 1
 
   if haber_skoru > 0:
     puan += 2
-    nedenler.append(
-        f"KAP bildirimleri ve haber akışında olumlu ton hakim (Skor: +"
-        f"{haber_skoru})."
-    )
+    nedenler.append(f"Haber akışı olumlu (Skor: +{haber_skoru}).")
   elif haber_skoru < 0:
     puan -= 2
-    nedenler.append(
-        f"Haber akışında temkinli/olumsuz başlıklar var (Skor: {haber_skoru})."
-    )
+    nedenler.append(f"Haber akışı temkinli/olumsuz (Skor: {haber_skoru}).")
   else:
-    nedenler.append("Haber akışında nötr ve dengeli bir seyir var.")
+    nedenler.append("Haber akışı dengeli.")
 
   if puan >= 3:
     karar = "AL"
@@ -257,50 +222,123 @@ def akilli_analiz_uret(df, haberler, kap_bildirimleri):
     karar = "TUT (NÖTR)"
     renk = "🟡"
 
-  return karar, renk, nedenler, son_fiyat, son_rsi, son_sma50, son_sma200
-
-
-with st.spinner(f"{secilen_hisse} verileri ve akıllı analiz işleniyor..."):
-  df = veri_cek_ve_hazirla(secilen_hisse)
-  haberler, kap_bildirimleri = haberleri_ve_kap_getir(secilen_hisse)
-
-if df is not None and not df.empty and "Kapanis" in df.columns:
-  karar, renk, nedenler, son_fiyat, son_rsi, son_sma50, son_sma200 = (
-      akilli_analiz_uret(df, haberler, kap_bildirimleri)
+  return (
+      karar,
+      renk,
+      nedenler,
+      son_fiyat,
+      son_rsi,
+      son_sma50,
+      son_sma200,
+      ideal_alim,
+      ideal_satim,
   )
 
-  col1, col2, col3, col4 = st.columns(4)
-  col1.metric("Son Fiyat", f"{son_fiyat:.2f} TL")
-  col2.metric("RSI (14)", f"{son_rsi:.2f}")
-  col3.metric("SMA 50", f"{son_sma50:.2f} TL")
-  col4.metric("SMA 200", f"{son_sma200:.2f} TL")
 
-  st.markdown("---")
-  st.subheader(f"🧠 Akıllı Karar Önerisi: {renk} **{karar}**")
-  with st.expander(
-      "🔍 Bu Kararın Gerekçeleri (Teknik + Haber Duygu Analizi)", expanded=True
-  ):
-    for neden in nedenler:
-      st.markdown(f"- {neden}")
-  st.markdown("---")
+# Sekme Yapısı
+tab_tekli, tab_matris = st.tabs(
+    ["📊 Tekli Hisse & Derin Analiz", "🌐 Tüm Piyasa Sinyal Matrisi (Tarama)"]
+)
 
-  st.subheader(f"{secilen_hisse} Fiyat Grafiği")
-  st.line_chart(df.set_index("Tarih")[["Kapanis", "SMA50", "SMA200"]])
-
-  tab_kap, tab_haber = st.tabs(
-      ["📢 Resmi KAP Bildirimleri", "📰 Piyasa & Basın Haberleri"]
+with tab_tekli:
+  default_index = bist_hisseler.index("SASA") if "SASA" in bist_hisseler else 0
+  secilen_hisse = st.selectbox(
+      "Analiz Etmek İstediğiniz Hisse Senedini Seçin:",
+      bist_hisseler,
+      index=default_index,
   )
-  with tab_kap:
-    if kap_bildirimleri:
+
+  with st.spinner(f"{secilen_hisse} verileri yükleniyor..."):
+    df = veri_cek_ve_hazirla(secilen_hisse)
+    haberler, kap_bildirimleri = haberleri_ve_kap_getir(secilen_hisse)
+
+  if df is not None and not df.empty and "Kapanis" in df.columns:
+    (
+        karar,
+        renk,
+        nedenler,
+        son_fiyat,
+        son_rsi,
+        son_sma50,
+        son_sma200,
+        ideal_alim,
+        ideal_satim,
+    ) = akilli_analiz_hesapla(df, kap_bildirimleri, haberler)
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Son Fiyat", f"{son_fiyat:.2f} TL")
+    col2.metric("RSI (14)", f"{son_rsi:.2f}")
+    col3.metric("İdeal Alım (Destek)", f"{ideal_alim:.2f} TL")
+    col4.metric("İdeal Satış (Direnç)", f"{ideal_satim:.2f} TL")
+
+    st.markdown("---")
+    st.subheader(f"🧠 Akıllı Karar Önerisi: {renk} **{karar}**")
+    with st.expander(
+        "🔍 Gerekçeler ve Detaylı Analiz", expanded=True
+    ):
+      for n in nedenler:
+        st.markdown(f"- {n}")
+    st.markdown("---")
+
+    st.subheader(f"{secilen_hisse} Fiyat Grafiği")
+    st.line_chart(df.set_index("Tarih")[["Kapanis", "SMA50", "SMA200"]])
+
+    t_kap, t_hab = st.tabs(
+        ["📢 Resmi KAP Bildirimleri", "📰 Piyasa & Basın Haberleri"]
+    )
+    with t_kap:
       for k in kap_bildirimleri:
         st.markdown(f"- **[{k['zaman']}]** [{k['baslik']}]({k['link']})")
-    else:
-      st.info("Bu hisse için resmi bildirim bulunamadı.")
-  with tab_haber:
-    if haberler:
+    with t_hab:
       for h in haberler:
         st.markdown(f"- **[{h['zaman']}]** [{h['baslik']}]({h['link']})")
+  else:
+    st.warning("Veri alınamadı.")
+
+with tab_matris:
+  st.subheader("🌐 BİST Genel Tarama ve Fırsat Matrisi")
+  st.markdown(
+      "Sistemdeki tüm hisseler taranarak anlık sinyaller ve ideal seviyeler"
+      " hesaplanıyor. Bu işlem internet hızına bağlı olarak 1-2 dakika"
+      " sürebilir."
+  )
+
+  if st.button("🚀 Tüm Piyasayı Tara ve Matrisi Oluştur"):
+    matris_verileri = []
+    progress_bar = st.progress(0)
+    toplam = len(bist_hisseler)
+
+    for i, h_kodu in enumerate(bist_hisseler):
+      df_m = veri_cek_ve_hazirla(h_kodu)
+      _, kap_m = haberleri_ve_kap_getir(h_kodu)
+      if df_m is not None and not df_m.empty and len(df_m) > 30:
+        try:
+          (
+              k_karar,
+              k_renk,
+              _,
+              k_fiyat,
+              k_rsi,
+              _,
+              _,
+              k_alim,
+              k_satim,
+          ) = akilli_analiz_hesapla(df_m, kap_m, [])
+          matris_verileri.append({
+              "Hisse": h_kodu,
+              "Son Fiyat (TL)": f"{k_fiyat:.2f}",
+              "RSI": f"{k_rsi:.1f}",
+              "Sinyal": f"{k_renk} {k_karar}",
+              "İdeal Alım": f"{k_alim:.2f} TL",
+              "İdeal Satış": f"{k_satim:.2f} TL",
+          })
+        except:
+          pass
+      progress_bar.progress((i + 1) / toplam)
+
+    if matris_verileri:
+      df_sonuc = pd.DataFrame(matris_verileri)
+      st.success("Tarama tamamlandı!")
+      st.dataframe(df_sonuc, use_container_width=True)
     else:
-      st.info("Basın akışı bulunamadı.")
-else:
-  st.warning("Veri işlenemedi veya sütun yapısı uyumsuz.")
+      st.warning("Tarama sırasında yeterli veri alınamadı.")
