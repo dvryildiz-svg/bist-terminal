@@ -1,41 +1,18 @@
-import json
 import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime
-import re
 
 # --- GOOGLE SHEETS BAĞLANTISI ---
 def google_sheets_baglan():
-    creds_dict = json.loads(st.secrets["google_credentials"])
-    pk = creds_dict.get("private_key", "")
-    
-    # --- MATEMATİKSEL KUSURSUZLUĞUNDA PADDING VE GÖVDE DÜZENLEYİCİ ---
-    match = re.search(r"-----BEGIN PRIVATE KEY-----(.*?)-----END PRIVATE KEY-----", pk, re.DOTALL)
-    if match:
-        raw_body = match.group(1)
-        
-        # 1. Tüm boşlukları, yeni satırları, noktaları ve geçersiz karakterleri temizle
-        clean_body = re.sub(r'[^A-Za-z0-9+/=]', '', raw_body)
-        
-        # 2. Mevcut dolgu (=) işaretlerini temizleyip uzunluğu tabana göre yeniden hesapla
-        clean_body = clean_body.rstrip('=')
-        padding_needed = len(clean_body) % 4
-        if padding_needed:
-            clean_body += '=' * (4 - padding_needed)
-            
-        # 3. Standartlara tam uygun olması için 64 karakterlik satırlar halinde böl
-        lines = [clean_body[i:i+64] for i in range(0, len(clean_body), 64)]
-        
-        # 4. Saf ve hatasız PEM anahtarını yeniden inşa et
-        pk = "-----BEGIN PRIVATE KEY-----\n" + "\n".join(lines) + "\n-----END PRIVATE KEY-----\n"
-        creds_dict["private_key"] = pk
-    # -------------------------------------------------------------
+    # Streamlit secrets tablosunu doğrudan Python sözlüğü olarak alıyoruz
+    creds_dict = dict(st.secrets["gcp_service_account"])
     
     scopes = [
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive"
     ]
+    
     creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
     client = gspread.authorize(creds)
     
