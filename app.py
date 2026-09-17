@@ -3,11 +3,21 @@ import streamlit as st
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
+import base64
 
 # --- GOOGLE SHEETS BAĞLANTISI ---
 def google_sheets_baglan():
-    # Streamlit secrets içindeki multi-line string'i doğrudan dict'e çeviriyoruz
     creds_dict = json.loads(st.secrets["google_credentials"])
+    
+    # --- INCORRECT PADDING KESİN ÇÖZÜMÜ ---
+    # Şifrede eksik kalmış olabilecek Base64 dolgu karakterlerini (==) otomatik tamamlar
+    pk = creds_dict.get("private_key", "")
+    pk = pk.strip()
+    padding_eksik = len(pk) % 4
+    if padding_eksik:
+        pk += '=' * (4 - padding_eksik)
+    creds_dict["private_key"] = pk
+    # -------------------------------------
     
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
