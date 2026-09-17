@@ -1,43 +1,25 @@
-import json
-import tempfile
-import os
 import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime
 
-# --- GOOGLE SHEETS BAĞLANTISI (SECRETS KASASI GÜVENLİ) ---
+# --- KESİN VE DOĞRUDAN GOOGLE SHEETS BAĞLANTISI ---
 def google_sheets_baglan():
-    # Secrets kasasından JSON metnini alıyoruz
-    raw_json = st.secrets["GOOGLE_CREDENTIALS_JSON"]
-    creds_dict = json.loads(raw_json)
+    # Streamlit secrets verisini doğrudan sözlük olarak alıyoruz (JSON/Tempfile karmaşası yok)
+    creds_dict = dict(st.secrets)
+
+    scopes = [
+        "https://spreadsheets.google.com/feeds",
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive"
+    ]
     
-    # Python düzeyinde kaçış karakterlerini gerçek alt satırlara dönüştürüyoruz
-    if "private_key" in creds_dict:
-        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
-
-    # Geçici dosya yöntemiyle tüm PEM/Padding hatalarını %100 önlüyoruz
-    with tempfile.NamedTemporaryFile(mode='w', delete=False, encoding='utf-8', suffix='.json') as f:
-        json.dump(creds_dict, f)
-        temp_filename = f.name
-
-    try:
-        scopes = [
-            "https://spreadsheets.google.com/feeds",
-            "https://www.googleapis.com/auth/spreadsheets",
-            "https://www.googleapis.com/auth/drive"
-        ]
-        
-        creds = Credentials.from_service_account_file(temp_filename, scopes=scopes)
-        client = gspread.authorize(creds)
-        
-        dosya = client.open("BIST_Trader_Arsivi")
-        sekme = dosya.worksheet("Portfoy_Arsivi")
-        return sekme
-        
-    finally:
-        if os.path.exists(temp_filename):
-            os.unlink(temp_filename)
+    creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+    client = gspread.authorize(creds)
+    
+    dosya = client.open("BIST_Trader_Arsivi")
+    sekme = dosya.worksheet("Portfoy_Arsivi")
+    return sekme
 
 # --- STREAMLIT ARAYÜZÜ ---
 st.title("BIST Trader - Portföy Girişi")
