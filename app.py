@@ -5,16 +5,22 @@ from datetime import datetime
 
 # --- GOOGLE SHEETS BAĞLANTISI ---
 def google_sheets_baglan():
-    # Şifreyi Streamlit'in gizli kasasından okuyoruz
     creds_dict = json.loads(st.secrets["google_credentials"])
     
-    # SİHİRLİ DOKUNUŞ: Şifrenin içindeki \n (düz yazı) karakterlerini gerçek alt satıra çeviriyoruz
-    creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+    # --- YOK EDİCİ TEMİZLİK FİLTRESİ ---
+    pk = creds_dict.get("private_key", "")
+    pk = pk.replace("\\n", "\n")
     
-    # gspread'in kendi modern altyapısını kullanıyoruz
+    # Eğer kopyalama sırasında başına nokta (.), boşluk veya tırnak karıştıysa,
+    # şifrenin başladığı asıl noktayı bulup sadece o kısmı alıyoruz.
+    if "-----BEGIN PRIVATE KEY-----" in pk:
+        baslangic = pk.find("-----BEGIN PRIVATE KEY-----")
+        pk = pk[baslangic:]
+        
+    creds_dict["private_key"] = pk
+    # ----------------------------------
+    
     client = gspread.service_account_from_dict(creds_dict)
-    
-    # Tablo ve sekme adını tam eşleştiriyoruz
     dosya = client.open("BIST_Trader_Arsivi")
     sekme = dosya.worksheet("Portfoy_Arsivi")
     return sekme
@@ -22,7 +28,6 @@ def google_sheets_baglan():
 # --- STREAMLIT ARAYÜZÜ ---
 st.title("BIST Trader - Portföy Girişi")
 
-# Kullanıcıdan verileri alıyoruz
 kullanici = st.text_input("Kullanıcı Adı", value="Devrim")
 hisse = st.text_input("Varlık / Hisse Sembolü (Örn: GUMUS, THYAO)")
 islem_turu = st.selectbox("İşlem Türü", ["ALIŞ", "SATIŞ"])
