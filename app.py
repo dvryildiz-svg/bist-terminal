@@ -233,10 +233,9 @@ def akilli_analiz_hesapla(df, kap_bildirimleri, haberler):
 
 # Sanal Portföy Bellek Yönetimi (Session State)
 if "nakit" not in st.session_state:
-  st.session_state.nakit = 1000000.0  # 1 Milyon TL Başlangıç
+  st.session_state.nakit = 1000000.0
 if "portfoy_hareketleri" not in st.session_state:
-  st.session_state.portfoy_hareketleri = []  # Yapılan işlemler listesi
-
+  st.session_state.portfoy_hareketleri = []
 
 tab_tekli, tab_matris, tab_portfoy = st.tabs([
     "📊 Tekli Hisse & Derin Analiz",
@@ -334,7 +333,6 @@ with tab_matris:
     if matris_verileri:
       df_sonuc = pd.DataFrame(matris_verileri)
 
-      # AL ve SAT olarak ayıralım ve puana göre sıralayalım
       al_grubu = (
           df_sonuc[df_sonuc["HamKarar"] == "AL"]
           .sort_values(by="Puan", ascending=False)
@@ -351,7 +349,6 @@ with tab_matris:
           .reset_index(drop=True)
       )
 
-      # Derecelendirme etiketleri ekleyelim (AL1, AL2... / SAT1, SAT2...)
       final_liste = []
       for idx, row in al_grubu.iterrows():
         row["Sinyal Derecesi"] = f"🟢 AL {idx+1}"
@@ -364,7 +361,6 @@ with tab_matris:
         final_liste.append(row)
 
       df_final = pd.DataFrame(final_liste)
-      # Kolon düzenleme
       df_final = df_final[[
           "Sinyal Derecesi",
           "Hisse",
@@ -397,7 +393,6 @@ with tab_portfoy:
       " edebilirsiniz."
   )
 
-  # Mevcut portföy hesaplaması (Elimizdeki net lotlar ve maliyetler)
   portfoy_durumu = {}
   toplam_hisse_degeri = 0
 
@@ -415,19 +410,17 @@ with tab_portfoy:
       portfoy_durumu[h]["maliyet_harcama"] += lot * fiyat
     elif tip == "SATIŞ":
       portfoy_durumu[h]["lot"] -= lot
-      # Satışta maliyeti orantısal düşelim
       if portfoy_durumu[h]["lot"] > 0:
         portfoy_durumu[h]["maliyet_harcama"] -= (
-            portfoy_durumu[h]["maliyet_harcama"] * (lot / (portfoy_durumu[h]["lot"] + lot))
+            portfoy_durumu[h]["maliyet_harcama"]
+            * (lot / (portfoy_durumu[h]["lot"] + lot))
         )
       else:
         portfoy_durumu[h]["maliyet_harcama"] = 0
 
-  # Aktif pozisyonları tabloya dökelim ve güncel fiyatla (veya son işlem fiyatıyla) değerleyelim
   aktif_pozisyonlar = []
   for h, veri in portfoy_durumu.items():
     if veri["lot"] > 0:
-      # Güncel piyasa fiyatını son veri setinden alalım
       df_p = veri_cek_ve_hazirla(h)
       guncel_piyasa_fiyati = (
           df_p["Kapanis"].iloc[-1]
@@ -451,9 +444,8 @@ with tab_portfoy:
 
   toplam_varlik = st.session_state.nakit + toplam_hisse_degeri
   toplam_kar_zarar = toplam_varlik - 1000000.0
-  toplam_kar_zarar_ yuzde = (toplam_kar_zarar / 1000000.0) * 100
+  toplam_kar_zarar_yuzde = (toplam_kar_zarar / 1000000.0) * 100
 
-  # Metrik Paneli
   c1, c2, c3, c4 = st.columns(4)
   c1.metric("Toplam Varlık", f"{toplam_varlik:,.2f} TL")
   c2.metric("Nakit Bakiye", f"{st.session_state.nakit:,.2f} TL")
@@ -501,7 +493,6 @@ with tab_portfoy:
           else:
             st.error("❌ Yetersiz Nakit Bakiye!")
         elif islem_tipi == "SATIŞ":
-          # Elinde yeterli lot var mı kontrolü
           mevcut_lot = portfoy_durumu.get(islem_hisse, {}).get("lot", 0)
           if mevcut_lot >= islem_miktar:
             st.session_state.nakit += toplam_tutar
@@ -511,7 +502,7 @@ with tab_portfoy:
                 "Tip": "SATIŞ",
                 "Miktar": islem_miktar,
                 "Fiyat": islem_fiyat,
-                "Tutar": toplam_tutar,
+                "Tutar": toplam_tusr ekrar := toplam_tutar,
             })
             st.success(
                 f"✅ {islem_hisse} için {islem_miktar} lot satış emri"
