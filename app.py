@@ -1,25 +1,7 @@
 import streamlit as st
-import gspread
-from google.oauth2.service_account import Credentials
+import requests
+import json
 from datetime import datetime
-
-# --- KESİN VE DOĞRUDAN GOOGLE SHEETS BAĞLANTISI ---
-def google_sheets_baglan():
-    # Streamlit secrets verisini doğrudan sözlük olarak alıyoruz (JSON/Tempfile karmaşası yok)
-    creds_dict = dict(st.secrets)
-
-    scopes = [
-        "https://spreadsheets.google.com/feeds",
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive"
-    ]
-    
-    creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-    client = gspread.authorize(creds)
-    
-    dosya = client.open("BIST_Trader_Arsivi")
-    sekme = dosya.worksheet("Portfoy_Arsivi")
-    return sekme
 
 # --- STREAMLIT ARAYÜZÜ ---
 st.title("BIST Trader - Portföy Girişi")
@@ -30,21 +12,39 @@ islem_turu = st.selectbox("İşlem Türü", ["ALIŞ", "SATIŞ"])
 lot = st.number_input("Lot / Adet", min_value=0.0, format="%.2f")
 fiyat = st.number_input("İşlem Fiyatı", min_value=0.0, format="%.2f")
 
+# Google Apps Script Webhook URL'niz
+WEBHOOK_URL = "BURAYA_GOOGLE_APPS_SCRIPT_WEB_URL_GELECEK"
+
 # Kaydet Butonu
 if st.button("İşlemi Kaydet"):
     if hisse and lot > 0 and fiyat > 0:
-        try:
-            sekme = google_sheets_baglan()
-            
-            zaman = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
-            toplam_tutar = lot * fiyat
-            
-            yeni_islem = [zaman, kullanici, hisse.upper(), islem_turu, lot, fiyat, toplam_tutar]
-            sekme.append_row(yeni_islem)
-            
-            st.success(f"Başarılı! {hisse} işlemi Portfoy_Arsivi sekmesine kaydedildi.")
-            
-        except Exception as e:
-            st.error(f"Hata Detayı: {type(e).__name__} - {str(e)}")
+        if WEBHOOK_URL == "BURAYA_GOOGLE_APPS_SCRIPT_WEB_URL_GELECEK":
+            st.error("Lütfen kodun içindeki WEBHOOK_URL kısmına Google'dan aldığınız URL'yi ekleyin!")
+        else:
+            try:
+                zaman = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
+                toplam_tutar = lot * fiyat
+                
+                payload = {
+                    "zaman": zaman,
+                    "kullanici": kullanici,
+                    "hisse": hisse.upper(),
+                    "islem_turu": islem_turu,
+                    "lot": lot,
+                    "fiyat": fiyat,
+                    "toplam_tutar": toplam_tutar
+                }
+                
+                # Google Sheets'e HTTP POST isteği gönderiyoruz
+                response = requests.post(WEBHOOK_URL, json=payload, timeout=10)
+                result = response.json()
+                
+                if result.get("status") == "success":
+                    st.success(f"Başarılı! {hisse} işlemi Portfoy_Arsivi sekmesine kaydedildi.")
+                else:
+                    st.error(f"Google Sheets Hatası: {result.get('message', 'Bilinmeyen hata')}")
+                    
+            except Exception as e:
+                st.error(f"Bağlantı Hatası: {type(e).__name__} - {str(e)}")
     else:
         st.warning("Lütfen hisse sembolü, lot ve fiyat bilgilerini eksiksiz girin.")
