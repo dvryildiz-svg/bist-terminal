@@ -1,43 +1,46 @@
+import json
+import tempfile
+import os
 import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime
-import re
 
-# --- GOOGLE SHEETS BAĞLANTISI ---
+# --- GOOGLE SHEETS BAĞLANTISI (GEÇİCİ DOSYA YÖNTEMİ) ---
 def google_sheets_baglan():
-    creds_dict = dict(st.secrets["gcp_service_account"])
-    pk = creds_dict.get("private_key", "")
-    
-    # --- NİHAİ PEM TEMİZLEME VE YENİDEN İNŞA MOTORU ---
-    # Şifrenin içindeki tüm harf, rakam, +, / ve = dışındaki bozuk/özel karakterleri yok et
-    clean_chars = re.findall(r'[A-Za-z0-9+/=]', pk)
-    body_str = "".join(clean_chars)
-    
-    # Dolgu karakterlerini matematiksel olarak sabitle
-    body_str = body_str.rstrip('=')
-    padding = len(body_str) % 4
-    if padding:
-        body_str += '=' * (4 - padding)
+    # Secrets kasasından veriyi sözlük olarak alıyoruz (İster JSON string ister TOML olsun çalışır)
+    try:
+        if "google_credentials" in st.secrets:
+            creds_dict = json.loads(st.secrets["google_credentials"])
+        else:
+            creds_dict = dict(st.secrets["gcp_service_account"])
+    except Exception:
+        creds_dict = dict(st.secrets["gcp_service_account"])
+
+    # Veriyi sunucuda anlık olarak fiziksel bir JSON dosyasına yazıyoruz
+    with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as f:
+        json.dump(creds_dict, f)
+        temp_filename = f.name
+
+    try:
+        scopes = [
+            "https://spreadsheets.google.com/feeds",
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive"
+        ]
         
-    # 64 karakterlik satırlar halinde kusursuz PEM formatına getir
-    lines = [body_str[i:i+64] for i in range(0, len(body_str), 64)]
-    fixed_pk = "-----BEGIN PRIVATE KEY-----\n" + "\n".join(lines) + "\n-----END PRIVATE KEY-----\n"
-    
-    creds_dict["private_key"] = fixed_pk
-    # ------------------------------------------------
-    
-    scopes = [
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive"
-    ]
-    
-    creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-    client = gspread.authorize(creds)
-    
-    dosya = client.open("BIST_Trader_Arsivi")
-    sekme = dosya.worksheet("Portfoy_Arsivi")
-    return sekme
+        # Google, dosyayı doğrudan okuduğu için PEM veya padding hatası asla vermez
+        creds = Credentials.from_service_account_file(temp_filename, scopes=scopes)
+        client = gspread.authorize(creds)
+        
+        dosya = client.open("BIST_Trader_Arsivi")
+        sekme = dosya.worksheet("Portfoy_Arsivi")
+        return sekme
+        
+    finally:
+        # İşlem bitince geçici dosyayı güvenle temizliyoruz
+        if os.path.exists(temp_filename):
+            os.unlink(temp_filename)
 
 # --- STREAMLIT ARAYÜZÜ ---
 st.title("BIST Trader - Portföy Girişi")
