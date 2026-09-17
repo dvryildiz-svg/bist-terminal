@@ -3,33 +3,37 @@ import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime
+import re
 
 # --- GOOGLE SHEETS BAĞLANTISI ---
 def google_sheets_baglan():
     creds_dict = json.loads(st.secrets["google_credentials"])
-    
-    # --- NOKTA VE ÇÖP TEMİZLEME FİLTRESİ ---
     pk = creds_dict.get("private_key", "")
-    pk = pk.replace("\\n", "\n").strip()
     
-    # Şifre gövdesine sızmış olabilecek yabancı noktaları (.) ve geçersiz karakterleri temizliyoruz
-    # (Base64 anahtarlarında nokta asla bulunmaz)
-    if "-----BEGIN PRIVATE KEY-----" in pk and "-----END PRIVATE KEY-----" in pk:
-        baslangic = pk.find("-----BEGIN PRIVATE KEY-----")
-        bitis = pk.find("-----END PRIVATE KEY-----") + len("-----END PRIVATE KEY-----")
-        header_footer = pk[baslangic:bitis]
+    # --- MATEMATİKSEL KUSURSUZLUĞUNDA PADDING VE GÖVDE DÜZENLEYİCİ ---
+    match = re.search(r"-----BEGIN PRIVATE KEY-----(.*?)-----END PRIVATE KEY-----", pk, re.DOTALL)
+    if match:
+        raw_body = match.group(1)
         
-        # Sadece gövde kısmını alıp içindeki olası noktaları yok ediyoruz
-        govde = header_footer.replace("-----BEGIN PRIVATE KEY-----", "").replace("-----END PRIVATE KEY-----", "")
-        govde = govde.replace(".", "").strip() # İşte inatçı noktayı yok ettiğimiz yer!
+        # 1. Tüm boşlukları, yeni satırları, noktaları ve geçersiz karakterleri temizle
+        clean_body = re.sub(r'[^A-Za-z0-9+/=]', '', raw_body)
         
-        pk = "-----BEGIN PRIVATE KEY-----\n" + govde + "\n-----END PRIVATE KEY-----\n"
+        # 2. Mevcut dolgu (=) işaretlerini temizleyip uzunluğu tabana göre yeniden hesapla
+        clean_body = clean_body.rstrip('=')
+        padding_needed = len(clean_body) % 4
+        if padding_needed:
+            clean_body += '=' * (4 - padding_needed)
+            
+        # 3. Standartlara tam uygun olması için 64 karakterlik satırlar halinde böl
+        lines = [clean_body[i:i+64] for i in range(0, len(clean_body), 64)]
         
-    creds_dict["private_key"] = pk
-    # ---------------------------------------
+        # 4. Saf ve hatasız PEM anahtarını yeniden inşa et
+        pk = "-----BEGIN PRIVATE KEY-----\n" + "\n".join(lines) + "\n-----END PRIVATE KEY-----\n"
+        creds_dict["private_key"] = pk
+    # -------------------------------------------------------------
     
     scopes = [
-        "https://spreadsheets.google.com/feeds",
+        "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive"
     ]
     creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
