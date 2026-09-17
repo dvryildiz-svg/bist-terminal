@@ -13,7 +13,7 @@ st.set_page_config(
 
 st.title("🦅 BİST & Çoklu Varlık Profesyonel Fon Yönetim Terminali")
 st.markdown(
-    "Sıralı Sinyaller (AL1, SAT1...), Döviz/Altın/Gümüş Entegrasyonu, Günlük"
+    "Sıralı Sinyaller (AL1, SAT1...), Canlı Döviz/Altın/Gümüş Fiyatları, Günlük"
     " Nemalandırma (%0,12) ve Çoklu Kullanıcı Liderlik Matrisi."
 )
 
@@ -76,7 +76,6 @@ bist_hisseler = sorted([
     "YKBNK",
 ])
 
-# Alternatif Varlıklar (Döviz, Altın, Gümüş)
 alternatif_varliklar = [
     "USD/TRY",
     "EUR/TRY",
@@ -124,31 +123,29 @@ def veri_cek_ve_hazirla(hisse):
   return None
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=60)
 def alternatif_fiyat_cek(varlik):
   try:
     if varlik == "USD/TRY":
       t = yf.Ticker("USDTRY=X")
-      return t.history(period="1d")["Close"].iloc[-1]
+      return float(t.history(period="1d")["Close"].iloc[-1])
     elif varlik == "EUR/TRY":
       t = yf.Ticker("EURTRY=X")
-      return t.history(period="1d")["Close"].iloc[-1]
+      return float(t.history(period="1d")["Close"].iloc[-1])
     elif varlik == "GBP/TRY":
       t = yf.Ticker("GBPTRY=X")
-      return t.history(period="1d")["Close"].iloc[-1]
+      return float(t.history(period="1d")["Close"].iloc[-1])
     elif varlik == "Gram Altın (TL)":
-      # Ons altın ($/ons) * USDTRY / 31.1035
       altin_ons = yf.Ticker("GC=F").history(period="1d")["Close"].iloc[-1]
       usd_try = yf.Ticker("USDTRY=X").history(period="1d")["Close"].iloc[-1]
-      return (altin_ons * usd_try) / 31.1035
+      return float((altin_ons * usd_try) / 31.1035)
     elif varlik == "Gram Gümüş (TL)":
-      # Ons gümüş ($/ons) * USDTRY / 31.1035
       gumus_ons = yf.Ticker("SI=F").history(period="1d")["Close"].iloc[-1]
       usd_try = yf.Ticker("USDTRY=X").history(period="1d")["Close"].iloc[-1]
-      return (gumus_ons * usd_try) / 31.1035
+      return float((gumus_ons * usd_try) / 31.1035)
   except:
-    return 0.0
-  return 0.0
+    return 10.0
+  return 10.0
 
 
 @st.cache_data(ttl=1800)
@@ -303,13 +300,11 @@ if st.sidebar.button("Profili Oluştur/Geç"):
       st.success(f"Hoş geldin {temiz_ad}! 1M TL sermayeniz tanımlandı.")
       st.rerun()
 
-# Aktif kullanıcının verilerini çekelim
 aktif_profil = st.session_state.kullanicilar[secilen_kullanici]
 
 # Günlük Nakit Nemalandırma Kontrolü (%0,12 günlük repo faizi)
 bugun_str = str(datetime.date.today())
 if aktif_profil["son_hesap_tarihi"] != bugun_str:
-  # Basit günlük %0.12 nemalandırma
   faiz_getirisi = aktif_profil["nakit"] * 0.0012
   aktif_profil["nakit"] += faiz_getirisi
   aktif_profil["son_hesap_tarihi"] = bugun_str
@@ -502,7 +497,6 @@ with tab_portfoy:
   aktif_pozisyonlar = []
   for h, veri in portfoy_durumu.items():
     if veri["lot"] > 0:
-      # Güncel fiyat tespiti (Hisse mi Alternatif Varlık mı?)
       if h in alternatif_varliklar:
         guncel_fiyat = alternatif_fiyat_cek(h)
       else:
@@ -547,16 +541,34 @@ with tab_portfoy:
 
   with col_islem1:
     st.subheader("📝 Emir Girişi (Alış / Satış)")
-    with st.form("emir_formu"):
-      islem_hisse = st.selectbox(
-          "Varlık / Hisse Seçin", tum_islem_varliklari
+
+    # Seçilen varlığın anlık fiyatını önden çekelim ki varsayılan olarak yazabilelim
+    secilen_varlik_gecici = st.selectbox(
+        "Varlık / Hisse Seçin", tum_islem_varliklari, key="secilen_varlik_input"
+    )
+
+    if secilen_varlik_gecici in alternatif_varliklar:
+      otomatik_fiyat = alternatif_fiyat_cek(secilen_varlik_gecici)
+    else:
+      df_gecici = veri_cek_ve_hazirla(secilen_varlik_gecici)
+      otomatik_fiyat = (
+          float(df_gecici["Kapanis"].iloc[-1])
+          if (df_gecici is not None and not df_gecici.empty)
+          else 10.0
       )
+
+    with st.form("emir_formu"):
+      islem_hisse = secilen_varlik_gecici
       islem_tipi = st.selectbox("İşlem Tipi", ["ALIŞ", "SATIŞ"])
       islem_miktar = st.number_input(
           "Miktar / Lot", min_value=1, value=1000, step=100
       )
       islem_fiyat = st.number_input(
-          "Birim Fiyat (TL)", min_value=0.01, value=10.0, step=0.05
+          "Birim Fiyat (TL)",
+          min_value=0.01,
+          value=float(otomatik_fiyat),
+          step=0.05,
+          format="%.2f",
       )
 
       islem_onay = st.form_submit_button("Emri Gerçekleştir")
@@ -650,7 +662,6 @@ with tab_liderlik:
 
   liderlik_verileri = []
   for kullanici_adi, prof in st.session_state.kullanicilar.items():
-    # Kullanıcının varlık değerini hesapla
     p_durum = {}
     hisse_val = 0
     for isl in prof["portfoy_hareketleri"]:
