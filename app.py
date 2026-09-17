@@ -14,7 +14,7 @@ st.set_page_config(
 st.title("🦅 BİST & Çoklu Varlık Profesyonel Fon Yönetim Terminali")
 st.markdown(
     "Sıralı Sinyaller (AL1, SAT1...), Canlı Döviz/Altın/Gümüş Fiyatları, Günlük"
-    " Nemalandırma (%0,12), Tarihsel Varlık Grafikleri ve Çoklu Kullanıcı"
+    " Nemalandırma (%0,12), Sanal Portföy Akıllı Radarı ve Çoklu Kullanıcı"
     " Liderlik Matrisi."
 )
 
@@ -273,7 +273,7 @@ if "kullanicilar" not in st.session_state:
       "Devrim": {
           "nakit": 1000000.0,
           "portfoy_hareketleri": [],
-          "gunluk_gecmis": [],  # Tarihsel varlık serüveni
+          "gunluk_gecmis": [],
           "son_hesap_tarihi": str(datetime.date.today()),
       },
       "Ahmet": {
@@ -317,7 +317,7 @@ if aktif_profil["son_hesap_tarihi"] != bugun_str:
 tab_tekli, tab_matris, tab_portfoy, tab_liderlik = st.tabs([
     "📊 Tekli Hisse & Derin Analiz",
     "🌐 Tüm Piyasa Sinyal Matrisi (Tarama)",
-    f"💼 Sanal Portföy & Geçmiş ({secilen_kullanici})",
+    f"💼 Sanal Portföy, Radar & Geçmiş ({secilen_kullanici})",
     "🏆 Liderlik & Yatırımcılar Matrisi",
 ])
 
@@ -465,12 +465,12 @@ with tab_matris:
 
 with tab_portfoy:
   st.subheader(
-      f"💼 Sanal Portföy, Tarihsel Serüven & Kırılımlar ({secilen_kullanici})"
+      f"💼 Sanal Portföy, Akıllı Radar & Tarihsel Serüven ({secilen_kullanici})"
   )
   st.markdown(
       "Başlangıç sermayeniz **1.000.000 TL**'dir. Nakitleriniz günlük **%0,12"
-      " repo faizi** ile nemalanır. Varlık kırılımlarınızı ve tarihsel portföy"
-      " eğrinizi aşağıda takip edebilirsiniz."
+      " repo faizi** ile nemalanır. Piyasadaki en güçlü AL fırsatları ve"
+      " portföyünüzdeki riskli (SAT) kağıtlar aşağıda taranmaktadır."
   )
 
   portfoy_durumu = {}
@@ -521,7 +521,6 @@ with tab_portfoy:
 
       toplam_varlik_degeri += piyasa_degeri
 
-      # Kırılım Sınıflandırması
       if h in ["USD/TRY", "EUR/TRY", "GBP/TRY"]:
         doviz_degeri_toplam += piyasa_degeri
       elif h in ["Gram Altın (TL)", "Gram Gümüş (TL)"]:
@@ -542,9 +541,7 @@ with tab_portfoy:
   toplam_kar_zarar = toplam_toplam - 1000000.0
   toplam_kar_zarar_yuzde = (toplam_kar_zarar / 1000000.0) * 100
 
-  # Günlük Tarihsel Kayıt Ekleme (Bugünün tarihiyle snapshot)
   bugun_tarih = str(datetime.date.today())
-  # Eğer bugün için kayıt yoksa ekle veya son kaydı güncelle
   mevcut_gunluk = aktif_profil["gunluk_gecmis"]
   if not mevcut_gunluk or mevcut_gunluk[-1]["Tarih"] != bugun_tarih:
     mevcut_gunluk.append({
@@ -556,7 +553,6 @@ with tab_portfoy:
         "Altın & Gümüş": altin_gumus_degeri_toplam,
     })
   else:
-    # Aynı gün içindeki değişimleri güncelle
     mevcut_gunluk[-1]["Toplam Varlık"] = toplam_toplam
     mevcut_gunluk[-1]["Nakit"] = aktif_profil["nakit"]
     mevcut_gunluk[-1]["Hisse"] = hisse_degeri_toplam
@@ -572,6 +568,91 @@ with tab_portfoy:
       f"{toplam_kar_zarar:,.2f} TL",
       f"{toplam_kar_zarar_yuzde:.2f}%",
   )
+
+  st.markdown("---")
+
+  # --- AKILLI RADAR BÖLÜMÜ (Portföy İçinde Anlık Fırsat & Risk Tarama) ---
+  with st.expander(
+      "🎯 Anlık Piyasa Radarı: En Güçlü AL Fırsatları & Portföy Risk Alarmları",
+      expanded=True,
+  ):
+    st.markdown(
+        "Bu alan, işlem yaparken hızlı karar alabilmeniz için piyasadaki en"
+        " iyi AL fırsatlarını ve portföyünüzdeki SAT sinyali veren riskli"
+        " kağıtları anlık tarar."
+    )
+    if st.button("📡 Radarı Çalıştır ve Fırsatları Listele"):
+      with st.spinner("Piyasa ve portföy taranıyor..."):
+        radar_sonuclari = []
+        for h_kodu in bist_hisseler:
+          df_r = veri_cek_ve_hazirla(h_kodu)
+          if df_r is not None and not df_r.empty and len(df_r) > 30:
+            try:
+              r_karar, r_puan, _, r_fiyat, r_rsi, _, _, r_alim, r_satim = (
+                  akilli_analiz_hesapla(df_r, [], [])
+              )
+              radar_sonuclari.append({
+                  "Hisse": h_kodu,
+                  "Puan": r_puan,
+                  "Karar": r_karar,
+                  "Fiyat": r_fiyat,
+                  "RSI": r_rsi,
+              })
+            except:
+              pass
+
+        if radar_sonuclari:
+          df_rad = pd.DataFrame(radar_sonuclari)
+          # En güçlü 10 AL
+          en_iyi_al = (
+              df_rad[df_rad["Karar"] == "AL"]
+              .sort_values(by="Puan", ascending=False)
+              .head(10)
+          )
+
+          col_rad1, col_rad2 = st.columns(2)
+
+          with col_rad1:
+            st.markdown("### 🟢 Piyasada En Güçlü İlk 10 AL Fırsatı")
+            if not en_iyi_al.empty:
+              for idx, row in en_iyi_al.reset_index(drop=True).iterrows():
+                st.markdown(
+                    f"**{idx+1}. {row['Hisse']}** — Fiyat: {row['Fiyat']:.2f} TL |"
+                    f" RSI: {row['RSI']:.1f} | Puan: {row['Puan']}"
+                )
+            else:
+              st.info("Şu an kriterlere uyan güçlü AL sinyali bulunamadı.")
+
+          with col_rad2:
+            st.markdown(
+                "### 🔴 Portföyünüzde SAT / Baskı Altındaki Varlıklar"
+            )
+            # Elimizdeki aktif hisseleri kontrol edelim
+            aktif_hisseler_listesi = [
+                k for k, v in portfoy_durumu.items() if v["lot"] > 0 and k not in alternatif_varliklar
+            ]
+            riskli_varliklar = []
+            for ah in aktif_hisseler_listesi:
+              eslesen = df_rad[df_rad["Hisse"] == ah]
+              if not eslesen.empty:
+                karar_durumu = eslesen.iloc[0]["Karar"]
+                puan_durumu = eslesen.iloc[0]["Puan"]
+                if karar_durumu == "SAT" or puan_durumu <= 0:
+                  riskli_varliklar.append(
+                      f"⚠️ **{ah}** — Sinyal: {karar_durumu} (Puan:"
+                      f" {puan_durumu}). Pozisyonu gözden geçirin!"
+                  )
+
+            if riskli_varliklar:
+              for r_str in riskli_varliklar:
+                st.markdown(r_str)
+            else:
+              st.success(
+                  "Harika! Portföyünüzde şu an SAT sinyali veren riskli bir"
+                  " hisse bulunmuyor."
+              )
+        else:
+          st.warning("Radar taraması sırasında veri alınamadı.")
 
   st.markdown("---")
 
@@ -699,7 +780,7 @@ with tab_portfoy:
       st.info("Portföyünüzde şu an aktif varlık yok, nakit durumundasınız.")
 
   st.markdown("---")
-  st.subheader("📜 Geçmiş İşlem Günlüğünüz & Günlük Kırılım Arşivi")
+  st.subheader("📜 Geçmiş İşlem Günlüğünüz")
   if aktif_profil["portfoy_hareketleri"]:
     df_gecmis = pd.DataFrame(aktif_profil["portfoy_hareketleri"])
     st.dataframe(
