@@ -1,4 +1,6 @@
 import datetime
+from feedparser import parse
+from isyatirimhisse import fetch_stock_data
 import pandas as pd
 import requests
 import streamlit as st
@@ -12,9 +14,9 @@ st.set_page_config(
 
 st.title("🦁 BİST & Çoklu Varlık Profesyonel Fon Yönetim Terminali")
 st.markdown(
-    "Google E-Tablolar (GOOGLEFINANCE) Canlı Fiyat Entegrasyonu, Günlük"
-    " Nemalandırma (%0,12), Sanal Portföy Akıllı Radarı ve Çoklu Kullanıcı"
-    " Liderlik Matrisi."
+    "Tüm BİST Hisseleri Evreni, Sıralı Sinyaller (AL1, SAT1...), Canlı Fiyat"
+    " Entegrasyonu, Günlük Nemalandırma (%0,12), Sanal Portföy Akıllı Radarı ve"
+    " Çoklu Kullanıcı Liderlik Matrisi."
 )
 
 # Google Apps Script Webhook URL'niz (Kayıt için)
@@ -103,7 +105,6 @@ bist_hisseler = sorted([
     "BJKAS",
     "BLCYT",
     "BMSCH",
-    "BMV",
     "BNTAS",
     "BOBET",
     "BORLS",
@@ -111,7 +112,6 @@ bist_hisseler = sorted([
     "BRISA",
     "BRKO",
     "BRKSN",
-    "BRmen",
     "BRSAN",
     "BRYAT",
     "BUCIM",
@@ -120,7 +120,6 @@ bist_hisseler = sorted([
     "BVSAN",
     "BYDNR",
     "CANTE",
-    "CASHY",
     "CCOLA",
     "CELHA",
     "CEMAS",
@@ -314,11 +313,9 @@ bist_hisseler = sorted([
     "MEDTR",
     "MEGAP",
     "MEKAG",
-    "MENES",
     "MERCN",
     "MERIT",
     "MERKO",
-    "MESAN",
     "METRO",
     "METUR",
     "MGROS",
@@ -332,8 +329,6 @@ bist_hisseler = sorted([
     "MRSHL",
     "MSGYO",
     "MTRKS",
-    "MﺕAS",
-    "MﺕTUR",
     "NIBAS",
     "NTGAZ",
     "NTHOL",
@@ -391,7 +386,6 @@ bist_hisseler = sorted([
     "RYSAS",
     "SAFKR",
     "SAHOL",
-    "_SASA_",
     "SASA",
     "SAYAS",
     "SDTTR",
@@ -467,7 +461,6 @@ bist_hisseler = sorted([
     "YBTAS",
     "YEOTK",
     "YESIL",
-    "YIGIT",
     "YKBNK",
     "YKSL",
     "YUNSA",
@@ -486,9 +479,46 @@ alternatif_varliklar = [
 ]
 tum_islem_varliklari = sorted(bist_hisseler) + alternatif_varliklar
 
+bitis_tarihi = datetime.datetime.now().strftime("%d-%m-%Y")
+baslangic_tarihi = (
+    datetime.datetime.now() - datetime.timedelta(days=365)
+).strftime("%d-%m-%Y")
+
+
+@st.cache_data(ttl=3600)
+def veri_cek_ve_hazirla(hisse):
+  try:
+    df = fetch_stock_data(
+        symbols=[hisse], start_date=baslangic_tarihi, end_date=bitis_tarihi
+    )
+    if df is not None and not df.empty:
+      df.columns = [str(col).upper() for col in df.columns]
+      tarih_kolonu = next(
+          (c for c in df.columns if "TARIH" in c or "DATE" in c), None
+      )
+      kapanis_kolonu = next(
+          (
+              c
+              for c in df.columns
+              if "KAP" in c or "CLOSE" in c or "FIYAT" in c
+          ),
+          None,
+      )
+
+      if tarih_kolonu and kapanis_kolonu:
+        df["Tarih"] = pd.to_datetime(
+            df[tarih_kolonu], format="%d-%m-%Y", errors="coerce"
+        )
+        df = df.dropna(subset=["Tarih"]).sort_values("Tarih")
+        df["Kapanis"] = pd.to_numeric(df[kapanis_kolonu], errors="coerce")
+        return df
+  except:
+    pass
+  return None
+
 
 @st.cache_data(ttl=60)
-def canli_fiyat_cek(varlik):
+def alternatif_fiyat_cek(varlik):
   try:
     if varlik == "USD/TRY":
       t = yf.Ticker("USDTRY=X")
@@ -507,18 +537,130 @@ def canli_fiyat_cek(varlik):
       gumus_ons = yf.Ticker("SI=F").history(period="1d")["Close"].iloc[-1]
       usd_try = yf.Ticker("USDTRY=X").history(period="1d")["Close"].iloc[-1]
       return float((gumus_ons * usd_try) / 31.1035)
-    else:
-      ticker_str = f"{varlik}.IS"
-      t = yf.Ticker(ticker_str)
-      hist = t.history(period="1d")
-      if not hist.empty:
-        return float(hist["Close"].iloc[-1])
   except:
-    pass
+    return 10.0
   return 10.0
 
 
-# Çoklu Kullanıcı Veritabanı
+@st.cache_data(ttl=1800)
+def haberleri_ve_kap_getir(hisse_kodu):
+  try:
+    url_haber = f"https://news.google.com/rss/search?q={hisse_kodu}+hisse+borsa&hl=TR&gl=TR&ceid=TR:tr"
+    feed_haber = parse(url_haber)
+    haberler = [
+        {
+            "baslik": entry.title,
+            "link": entry.link,
+            "zaman": getattr(entry, "published", "Güncel"),
+        }
+        for entry in feed_haber.entries[:4]
+    ]
+
+    url_kap = f"https://news.google.com/rss/search?q={hisse_kodu}+KAP+bildirimi+özel+durum&hl=TR&gl=TR&ceid=TR:tr"
+    feed_kap = parse(url_kap)
+    kap_bildirimleri = [
+        {
+            "baslik": entry.title,
+            "link": entry.link,
+            "zaman": getattr(entry, "published", "Güncel"),
+        }
+        for entry in feed_kap.entries[:4]
+    ]
+
+    return haberler, kap_bildirimleri
+  except:
+    return [], []
+
+
+def akilli_analiz_hesapla(df, kap_bildirimleri, haberler):
+  nedenler = []
+  puan = 0
+
+  son_fiyat = df["Kapanis"].iloc[-1]
+  delta = df["Kapanis"].diff()
+  gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+  loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+  rs = gain / loss
+  df["RSI"] = 100 - (100 / (1 + rs))
+  son_rsi = df["RSI"].iloc[-1]
+
+  df["SMA50"] = df["Kapanis"].rolling(window=50).mean()
+  df["SMA200"] = df["Kapanis"].rolling(window=200).mean()
+  son_sma50 = df["SMA50"].iloc[-1]
+  son_sma200 = df["SMA200"].iloc[-1]
+
+  ideal_alim = son_fiyat * 0.97
+  ideal_satim = son_fiyat * 1.05
+
+  if son_rsi < 35:
+    puan += 2
+    nedenler.append(
+        f"RSI aşırı satımda ({son_rsi:.1f}), tepki alımı gelebilir."
+    )
+  elif son_rsi > 65:
+    puan -= 2
+    nedenler.append(f"RSI aşırı alımda ({son_rsi:.1f}), dikkatli olunmalı.")
+  else:
+    nedenler.append(f"RSI nötr bölgede ({son_rsi:.1f}).")
+
+  if son_fiyat > son_sma50:
+    puan += 1
+    nedenler.append("Fiyat 50 günlük ortalamanın üzerinde.")
+  else:
+    puan -= 1
+    nedenler.append("Fiyat 50 günlük ortalamanın altında.")
+
+  if son_fiyat > son_sma200:
+    puan += 2
+    nedenler.append("Uzun vadeli ana trend pozitif.")
+  else:
+    puan -= 2
+    nedenler.append("Uzun vadeli ana trend baskı altında.")
+
+  olumlu = ["sözleşme", "ihale", "kar", "rekor", "artış", "onay", "yatırım"]
+  olumsuz = ["zarar", "ceza", "soruşturma", "dava", "borç", "düşüş"]
+  haber_skoru = 0
+  tarananlar = [k["baslik"].lower() for k in kap_bildirimleri] + [
+      h["baslik"].lower() for h in haberler
+  ]
+  for m in tarananlar:
+    for o in olumlu:
+      if o in m:
+        haber_skoru += 1
+    for ol in olumsuz:
+      if ol in m:
+        haber_skoru -= 1
+
+  if haber_skoru > 0:
+    puan += 2
+    nedenler.append(f"Haber akışı olumlu (Skor: +{haber_skoru}).")
+  elif haber_skoru < 0:
+    puan -= 2
+    nedenler.append(f"Haber akışı temkinli/olumsuz (Skor: {haber_skoru}).")
+  else:
+    nedenler.append("Haber akışı dengeli.")
+
+  if puan >= 3:
+    karar = "AL"
+  elif puan <= -2:
+    karar = "SAT"
+  else:
+    karar = "TUT"
+
+  return (
+      karar,
+      puan,
+      nedenler,
+      son_fiyat,
+      son_rsi,
+      son_sma50,
+      son_sma200,
+      ideal_alim,
+      ideal_satim,
+  )
+
+
+# Çoklu Kullanıcı Veritabanı (Session State Ana Havuzu)
 if "kullanicilar" not in st.session_state:
   st.session_state.kullanicilar = {
       "Devrim": {
@@ -535,6 +677,7 @@ if "kullanicilar" not in st.session_state:
       },
   }
 
+# Kenar Çubuğu: Kullanıcı Seçimi / Yönetimi
 st.sidebar.header("👤 Yatırımcı Profili")
 secilen_kullanici = st.sidebar.selectbox(
     "Aktif Trader Seçin:", list(st.session_state.kullanicilar.keys())
@@ -556,7 +699,7 @@ if st.sidebar.button("Profili Oluştur/Geç"):
 
 aktif_profil = st.session_state.kullanicilar[secilen_kullanici]
 
-# Günlük Nakit Nemalandırma Kontrolü (%0,12 repo faizi)
+# Günlük Nakit Nemalandırma Kontrolü (%0,12 günlük repo faizi)
 bugun_str = str(datetime.date.today())
 if aktif_profil["son_hesap_tarihi"] != bugun_str:
   faiz_getirisi = aktif_profil["nakit"] * 0.0012
@@ -564,20 +707,166 @@ if aktif_profil["son_hesap_tarihi"] != bugun_str:
   aktif_profil["son_hesap_tarihi"] = bugun_str
 
 
-tab_portfoy, tab_liderlik = st.tabs([
-    f"💼 Sanal Portföy, Emir Girişi & Canlı Takip ({secilen_kullanici})",
+tab_tekli, tab_matris, tab_portfoy, tab_liderlik = st.tabs([
+    "📊 Tekli Hisse & Derin Analiz",
+    "🌐 Tüm Piyasa Sinyal Matrisi (Tarama)",
+    f"💼 Sanal Portföy, Radar & Geçmiş ({secilen_kullanici})",
     "🏆 Liderlik & Yatırımcılar Matrisi",
 ])
 
+with tab_tekli:
+  default_index = bist_hisseler.index("THYAO") if "THYAO" in bist_hisseler else 0
+  secilen_hisse = st.selectbox(
+      "Analiz Etmek İstediğiniz Hisse Senedini Seçin:",
+      bist_hisseler,
+      index=default_index,
+  )
+
+  with st.spinner(f"{secilen_hisse} verileri yükleniyor..."):
+    df = veri_cek_ve_hazirla(secilen_hisse)
+    haberler, kap_bildirimleri = haberleri_ve_kap_getir(secilen_hisse)
+
+  if df is not None and not df.empty and "Kapanis" in df.columns:
+    (
+        karar,
+        puan,
+        nedenler,
+        son_fiyat,
+        son_rsi,
+        son_sma50,
+        son_sma200,
+        ideal_alim,
+        ideal_satim,
+    ) = akilli_analiz_hesapla(df, kap_bildirimleri, haberler)
+
+    renk = "🟢" if karar == "AL" else ("🔴" if karar == "SAT" else "🟡")
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Son Kapanış Fiyatı", f"{son_fiyat:.2f} TL")
+    col2.metric("RSI (14)", f"{son_rsi:.1f}")
+    col3.metric("İdeal Alım (Destek)", f"{ideal_alim:.2f} TL")
+    col4.metric("İdeal Satış (Direnç)", f"{ideal_satim:.2f} TL")
+
+    st.markdown("---")
+    st.subheader(f"🧠 Akıllı Karar Önerisi: {renk} **{karar}** (Puan: {puan})")
+    with st.expander("🔍 Gerekçeler ve Detaylı Analiz", expanded=True):
+      for n in nedenler:
+        st.markdown(f"- {n}")
+    st.markdown("---")
+
+    st.subheader(f"{secilen_hisse} Fiyat Grafiği")
+    st.line_chart(df.set_index("Tarih")[["Kapanis", "SMA50", "SMA200"]])
+  else:
+    st.warning(
+        "Bu hisse için yeterli tarihsel veri alınamadı veya İş Yatırım"
+        " veritabanında bulunamadı."
+    )
+
+with tab_matris:
+  st.subheader("🌐 BİST Genel Tarama ve Sıralı Sinyal Matrisi")
+  st.markdown(
+      "Sistemdeki tüm hisseler taranır; puanlarına göre en güçlü alım"
+      " kağıtlarına **AL 1, AL 2...**, en zayıf satım kağıtlarına **SAT 1,"
+      " SAT 2...** derecesi verilir."
+  )
+
+  if st.button("🚀 Tüm Piyasayı Tara ve Sıralı Matrisi Oluştur"):
+    matris_verileri = []
+    progress_bar = st.progress(0)
+    toplam = len(bist_hisseler)
+
+    for i, h_kodu in enumerate(bist_hisseler):
+      df_m = veri_cek_ve_hazirla(h_kodu)
+      _, kap_m = haberleri_ve_kap_getir(h_kodu)
+      if df_m is not None and not df_m.empty and len(df_m) > 30:
+        try:
+          (
+              k_karar,
+              k_puan,
+              _,
+              k_fiyat,
+              k_rsi,
+              _,
+              _,
+              k_alim,
+              k_satim,
+          ) = akilli_analiz_hesapla(df_m, kap_m, [])
+          matris_verileri.append({
+              "Hisse": h_kodu,
+              "Puan": k_puan,
+              "HamKarar": k_karar,
+              "Son Fiyat (TL)": k_fiyat,
+              "RSI": k_rsi,
+              "İdeal Alım": k_alim,
+              "İdeal Satış": k_satim,
+          })
+        except:
+          pass
+      progress_bar.progress((i + 1) / toplam)
+
+    if matris_verileri:
+      df_sonuc = pd.DataFrame(matris_verileri)
+
+      al_grubu = (
+          df_sonuc[df_sonuc["HamKarar"] == "AL"]
+          .sort_values(by="Puan", ascending=False)
+          .reset_index(drop=True)
+      )
+      sat_grubu = (
+          df_sonuc[df_sonuc["HamKarar"] == "SAT"]
+          .sort_values(by="Puan", ascending=True)
+          .reset_index(drop=True)
+      )
+      tut_grubu = (
+          df_sonuc[df_sonuc["HamKarar"] == "TUT"]
+          .sort_values(by="Puan", ascending=False)
+          .reset_index(drop=True)
+      )
+
+      final_liste = []
+      for idx, row in al_grubu.iterrows():
+        row["Sinyal Derecesi"] = f"🟢 AL {idx+1}"
+        final_liste.append(row)
+      for idx, row in sat_grubu.iterrows():
+        row["Sinyal Derecesi"] = f"🔴 SAT {idx+1}"
+        final_liste.append(row)
+      for idx, row in tut_grubu.iterrows():
+        row["Sinyal Derecesi"] = f"🟡 TUT"
+        final_liste.append(row)
+
+      df_final = pd.DataFrame(final_liste)
+      df_final = df_final[[
+          "Sinyal Derecesi",
+          "Hisse",
+          "Son Fiyat (TL)",
+          "RSI",
+          "İdeal Alım",
+          "İdeal Satış",
+          "Puan",
+      ]]
+
+      st.success("Tarama ve Dereceli Sıralama Tamamlandı!")
+      st.dataframe(
+          df_final.style.format({
+              "Son Fiyat (TL)": "{:.2f} TL",
+              "RSI": "{:.1f}",
+              "İdeal Alım": "{:.2f} TL",
+              "İdeal Satış": "{:.2f} TL",
+          }),
+          use_container_width=True,
+          hide_index=True,
+      )
+    else:
+      st.warning("Tarama sırasında yeterli veri alınamadı.")
+
 with tab_portfoy:
   st.subheader(
-      f"💼 Profesyonel Sanal Portföy ve Canlı İşlem Merkezi ({secilen_kullanici})"
+      f"💼 Sanal Portföy, Akıllı Radar & Tarihsel Serüven ({secilen_kullanici})"
   )
   st.markdown(
       "Başlangıç sermayeniz **1.000.000 TL**'dir. Nakitleriniz günlük **%0,12"
-      " repo faizi** ile nemalanır. Yaptığınız işlemler hem anlık olarak"
-      " hesaplanır hem de **Webhook** aracılığıyla Google E-Tablo arşiviyle"
-      " senkronize edilir."
+      " repo faizi** ile nemalanır. Yaptığınız işlemler hem portföyünüze yansır"
+      " hem de **Webhook** ile Google E-Tablo arşiviyle senkronize edilir."
   )
 
   portfoy_durumu = {}
@@ -611,7 +900,16 @@ with tab_portfoy:
   aktif_pozisyonlar = []
   for h, veri in portfoy_durumu.items():
     if veri["lot"] > 0:
-      guncel_fiyat = canli_fiyat_cek(h)
+      if h in alternatif_varliklar:
+        guncel_fiyat = alternatif_fiyat_cek(h)
+      else:
+        df_p = veri_cek_ve_hazirla(h)
+        guncel_fiyat = (
+            df_p["Kapanis"].iloc[-1]
+            if (df_p is not None and not df_p.empty)
+            else (veri["maliyet_harcama"] / veri["lot"])
+        )
+
       piyasa_degeri = veri["lot"] * guncel_fiyat
       maliyet = veri["maliyet_harcama"]
       kar_zarar_tl = piyasa_degeri - maliyet
@@ -639,6 +937,24 @@ with tab_portfoy:
   toplam_kar_zarar = toplam_toplam - 1000000.0
   toplam_kar_zarar_yuzde = (toplam_kar_zarar / 1000000.0) * 100
 
+  bugun_tarih = str(datetime.date.today())
+  mevcut_gunluk = aktif_profil["gunluk_gecmis"]
+  if not mevcut_gunluk or mevcut_gunluk[-1]["Tarih"] != bugun_tarih:
+    mevcut_gunluk.append({
+        "Tarih": bugun_tarih,
+        "Toplam Varlık": toplam_toplam,
+        "Nakit": aktif_profil["nakit"],
+        "Hisse": hisse_degeri_toplam,
+        "Döviz": doviz_degeri_toplam,
+        "Altın & Gümüş": altin_gumus_degeri_toplam,
+    })
+  else:
+    mevcut_gunluk[-1]["Toplam Varlık"] = toplam_toplam
+    mevcut_gunluk[-1]["Nakit"] = aktif_profil["nakit"]
+    mevcut_gunluk[-1]["Hisse"] = hisse_degeri_toplam
+    mevcut_gunluk[-1]["Döviz"] = doviz_degeri_toplam
+    mevcut_gunluk[-1]["Altın & Gümüş"] = altin_gumus_degeri_toplam
+
   c1, c2, c3, c4 = st.columns(4)
   c1.metric("Toplam Varlık", f"{toplam_toplam:,.2f} TL")
   c2.metric("Nakit (Repo Nemalı)", f"{aktif_profil['nakit']:,.2f} TL")
@@ -651,14 +967,123 @@ with tab_portfoy:
 
   st.markdown("---")
 
+  # --- AKILLI RADAR BÖLÜMÜ ---
+  with st.expander(
+      "🎯 Anlık Piyasa Radarı: En Güçlü AL Fırsatları & Portföy Risk Alarmları",
+      expanded=True,
+  ):
+    st.markdown(
+        "Bu alan, işlem yaparken hızlı karar alabilmeniz için piyasadaki en"
+        " iyi AL fırsatlarını ve portföyünüzdeki SAT sinyali veren riskli"
+        " kağıtları anlık tarar."
+    )
+    if st.button("📡 Radarı Çalıştır ve Fırsatları Listele"):
+      with st.spinner("Piyasa ve portföy taranıyor..."):
+        radar_sonuclari = []
+        for h_kodu in bist_hisseler[:30]:  # Performans için ilk 30 popüler hisse
+          df_r = veri_cek_ve_hazirla(h_kodu)
+          if df_r is not None and not df_r.empty and len(df_r) > 30:
+            try:
+              r_karar, r_puan, _, r_fiyat, r_rsi, _, _, r_alim, r_satim = (
+                  akilli_analiz_hesapla(df_r, [], [])
+              )
+              radar_sonuclari.append({
+                  "Hisse": h_kodu,
+                  "Puan": r_puan,
+                  "Karar": r_karar,
+                  "Fiyat": r_fiyat,
+                  "RSI": r_rsi,
+              })
+            except:
+              pass
+
+        if radar_sonuclari:
+          df_rad = pd.DataFrame(radar_sonuclari)
+          en_iyi_al = (
+              df_rad[df_rad["Karar"] == "AL"]
+              .sort_values(by="Puan", ascending=False)
+              .head(5)
+          )
+
+          col_rad1, col_rad2 = st.columns(2)
+          with col_rad1:
+            st.markdown("### 🟢 En Güçlü AL Fırsatları")
+            if not en_iyi_al.empty:
+              for idx, row in en_iyi_al.reset_index(drop=True).iterrows():
+                st.markdown(
+                    f"**{idx+1}. {row['Hisse']}** — Fiyat: {row['Fiyat']:.2f} TL |"
+                    f" RSI: {row['RSI']:.1f}"
+                )
+            else:
+              st.info("Güçlü AL sinyali bulunamadı.")
+
+          with col_rad2:
+            st.markdown("### 🔴 Riskli / SAT Pozisyonlar")
+            aktif_hisseler_listesi = [
+                k for k, v in portfoy_durumu.items() if v["lot"] > 0 and k not in alternatif_varliklar
+            ]
+            riskli_varliklar = []
+            for ah in aktif_hisseler_listesi:
+              eslesen = df_rad[df_rad["Hisse"] == ah]
+              if not eslesen.empty:
+                if eslesen.iloc[0]["Karar"] == "SAT":
+                  riskli_varliklar.append(
+                      f"⚠️ **{ah}** — SAT sinyali veriyor!"
+                  )
+            if riskli_varliklar:
+              for r in riskli_varliklar:
+                st.markdown(r)
+            else:
+              st.success("Portföyünüzde riskli varlık bulunmuyor.")
+
+  st.markdown("---")
+
+  # Tarihsel Grafik ve Kırılımlar
+  col_grafik1, col_grafik2 = st.columns(2)
+  with col_grafik1:
+    st.subheader("📈 Tarihsel Varlık Eğrisi")
+    if len(mevcut_gunluk) > 0:
+      df_gecmis_varlik = pd.DataFrame(mevcut_gunluk).set_index("Tarih")
+      st.line_chart(df_gecmis_varlik[["Toplam Varlık"]])
+    else:
+      st.info("Veri oluşuyor...")
+
+  with col_grafik2:
+    st.subheader("🥧 Varlık Sınıfı Kırılımı (TL)")
+    kirilim_df = pd.DataFrame({
+        "Varlık Sınıfı": [
+            "Nakit / Repo",
+            "BİST Hisseler",
+            "Döviz",
+            "Altın & Gümüş",
+        ],
+        "Tutar (TL)": [
+            aktif_profil["nakit"],
+            hisse_degeri_toplam,
+            doviz_degeri_toplam,
+            altin_gumus_degeri_toplam,
+        ],
+    }).set_index("Varlık Sınıfı")
+    st.bar_chart(kirilim_df)
+
+  st.markdown("---")
   col_islem1, col_islem2 = st.columns(2)
 
   with col_islem1:
-    st.subheader("📝 Canlı Emir Girişi (Alış / Satış)")
+    st.subheader("📝 Emir Girişi (Alış / Satış)")
     secilen_varlik_gecici = st.selectbox(
         "Varlık / Hisse Seçin", tum_islem_varliklari, key="secilen_varlik_input"
     )
-    otomatik_fiyat = canli_fiyat_cek(secilen_varlik_gecici)
+
+    if secilen_varlik_gecici in alternatif_varliklar:
+      otomatik_fiyat = alternatif_fiyat_cek(secilen_varlik_gecici)
+    else:
+      df_gecici = veri_cek_ve_hazirla(secilen_varlik_gecici)
+      otomatik_fiyat = (
+          float(df_gecici["Kapanis"].iloc[-1])
+          if (df_gecici is not None and not df_gecici.empty)
+          else 10.0
+      )
 
     with st.form("emir_formu"):
       islem_hisse = secilen_varlik_gecici
@@ -816,7 +1241,15 @@ with tab_liderlik:
 
     for h_k, v_info in p_durum.items():
       if v_info["lot"] > 0:
-        g_f = canli_fiyat_cek(h_k)
+        if h_k in alternatif_varliklar:
+          g_f = alternatif_fiyat_cek(h_k)
+        else:
+          df_l = veri_cek_ve_hazirla(h_k)
+          g_f = (
+              df_l["Kapanis"].iloc[-1]
+              if (df_l is not None and not df_l.empty)
+              else (v_info["maliyet"] / v_info["lot"])
+          )
         hisse_val += v_info["lot"] * g_f
 
     top_varlik = prof["nakit"] + hisse_val
