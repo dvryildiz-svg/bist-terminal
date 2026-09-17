@@ -5,8 +5,18 @@ from datetime import datetime
 
 # --- GOOGLE SHEETS BAĞLANTISI ---
 def google_sheets_baglan():
-    # Streamlit secrets tablosunu doğrudan Python sözlüğü olarak alıyoruz
     creds_dict = dict(st.secrets["gcp_service_account"])
+    
+    # --- YER TUTUCU VE NOKTA TEMİZLEME FİLTRESİ ---
+    pk = creds_dict.get("private_key", "")
+    
+    # Yer tutucu olarak kalmış olabilecek tüm üç noktaları (...) ve yabancı noktaları temizliyoruz
+    pk = pk.replace("...", "").replace("..", "")
+    
+    # Satır sonlarını düzenle
+    pk = pk.replace("\\n", "\n").strip()
+    creds_dict["private_key"] = pk
+    # -----------------------------------------------
     
     scopes = [
         "https://www.googleapis.com/auth/spreadsheets",
