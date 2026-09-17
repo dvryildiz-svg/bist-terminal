@@ -660,7 +660,7 @@ def akilli_analiz_hesapla(df, kap_bildirimleri, haberler):
   )
 
 
-# Çoklu Kullanıcı Veritabanı (Session State Ana Havuzu)
+# Çoklu Kullanıcı Veritabanı
 if "kullanicilar" not in st.session_state:
   st.session_state.kullanicilar = {
       "Devrim": {
@@ -683,23 +683,28 @@ secilen_kullanici = st.sidebar.selectbox(
     "Aktif Trader Seçin:", list(st.session_state.kullanicilar.keys())
 )
 
-yeni_kullanici_adi = st.sidebar.text_input("Veya Yeni Trader Ekle:")
-if st.sidebar.button("Profili Oluştur/Geç"):
-  if yeni_kullanici_adi.strip():
-    temiz_ad = yeni_kullanici_adi.strip()
-    if temiz_ad not in st.session_state.kullanicilar:
-      st.session_state.kullanicilar[temiz_ad] = {
-          "nakit": 1000000.0,
-          "portfoy_hareketleri": [],
-          "gunluk_gecmis": [],
-          "son_hesap_tarihi": str(datetime.date.today()),
-      }
-      st.success(f"Hoş geldin {temiz_ad}! 1M TL sermayeniz tanımlandı.")
-      st.rerun()
+with st.sidebar.form("yeni_profil_formu"):
+  yeni_kullanici_adi = st.text_input("Veya Yeni Trader Ekle:")
+  profil_olustur_btn = st.form_submit_button("Profili Oluştur/Geç")
+
+  if profil_olustur_btn:
+    if yeni_kullanici_adi.strip():
+      temiz_ad = yeni_kullanici_adi.strip()
+      if temiz_ad not in st.session_state.kullanicilar:
+        st.session_state.kullanicilar[temiz_ad] = {
+            "nakit": 1000000.0,
+            "portfoy_hareketleri": [],
+            "gunluk_gecmis": [],
+            "son_hesap_tarihi": str(datetime.date.today()),
+        }
+        st.success(f"Hoş geldin {temiz_ad}! 1M TL sermayeniz tanımlandı.")
+        st.rerun()
+      else:
+        st.warning("Bu isimde bir trader zaten var!")
 
 aktif_profil = st.session_state.kullanicilar[secilen_kullanici]
 
-# Günlük Nakit Nemalandırma Kontrolü (%0,12 günlük repo faizi)
+# Günlük Nakit Nemalandırma Kontrolü (%0,12 repo faizi)
 bugun_str = str(datetime.date.today())
 if aktif_profil["son_hesap_tarihi"] != bugun_str:
   faiz_getirisi = aktif_profil["nakit"] * 0.0012
@@ -757,10 +762,7 @@ with tab_tekli:
     st.subheader(f"{secilen_hisse} Fiyat Grafiği")
     st.line_chart(df.set_index("Tarih")[["Kapanis", "SMA50", "SMA200"]])
   else:
-    st.warning(
-        "Bu hisse için yeterli tarihsel veri alınamadı veya İş Yatırım"
-        " veritabanında bulunamadı."
-    )
+    st.warning("Bu hisse için yeterli tarihsel veri alınamadı.")
 
 with tab_matris:
   st.subheader("🌐 BİST Genel Tarama ve Sıralı Sinyal Matrisi")
@@ -967,24 +969,18 @@ with tab_portfoy:
 
   st.markdown("---")
 
-  # --- AKILLI RADAR BÖLÜMÜ ---
   with st.expander(
       "🎯 Anlık Piyasa Radarı: En Güçlü AL Fırsatları & Portföy Risk Alarmları",
       expanded=True,
   ):
-    st.markdown(
-        "Bu alan, işlem yaparken hızlı karar alabilmeniz için piyasadaki en"
-        " iyi AL fırsatlarını ve portföyünüzdeki SAT sinyali veren riskli"
-        " kağıtları anlık tarar."
-    )
     if st.button("📡 Radarı Çalıştır ve Fırsatları Listele"):
       with st.spinner("Piyasa ve portföy taranıyor..."):
         radar_sonuclari = []
-        for h_kodu in bist_hisseler[:30]:  # Performans için ilk 30 popüler hisse
+        for h_kodu in bist_hisseler[:30]:
           df_r = veri_cek_ve_hazirla(h_kodu)
           if df_r is not None and not df_r.empty and len(df_r) > 30:
             try:
-              r_karar, r_puan, _, r_fiyat, r_rsi, _, _, r_alim, r_satim = (
+              r_karar, r_puan, _, r_fiyat, r_rsi, _, _, _, _ = (
                   akilli_analiz_hesapla(df_r, [], [])
               )
               radar_sonuclari.append({
@@ -1038,7 +1034,6 @@ with tab_portfoy:
 
   st.markdown("---")
 
-  # Tarihsel Grafik ve Kırılımlar
   col_grafik1, col_grafik2 = st.columns(2)
   with col_grafik1:
     st.subheader("📈 Tarihsel Varlık Eğrisi")
