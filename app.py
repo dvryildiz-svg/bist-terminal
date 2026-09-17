@@ -8,14 +8,26 @@ from datetime import datetime
 
 # --- GOOGLE SHEETS BAĞLANTISI ---
 def google_sheets_baglan():
-    # TOML secrets verisini sözlük olarak alıyoruz
-    creds_dict = dict(st.secrets["gcp_service_account"])
-    
-    # Dizi (array) halinde gelen private_key satırlarını gerçek PEM formatı için \n ile birleştiriyoruz
-    if isinstance(creds_dict.get("private_key"), list):
-        creds_dict["private_key"] = "\n".join(creds_dict["private_key"])
+    # Ham private key metnini alıp kaçış karakterlerini gerçek alt satırlara dönüştürüyoruz
+    raw_pk = st.secrets["raw_private_key"]
+    fixed_pk = raw_pk.replace("\\\\n", "\n").replace("\\n", "\n")
 
-    # Geçici dosya yöntemiyle tüm PEM/Padding hatalarını %100 engelliyoruz
+    # Tamamen standartlara uygun sözlüğü oluşturuyoruz
+    creds_dict = {
+        "type": "service_account",
+        "project_id": "ringed-empire-508912-p6",
+        "private_key_id": "da94d40dbcd4f54f79c1bdc7e67ea91f8afdf8ed",
+        "private_key": fixed_pk,
+        "client_email": "devrim@ringed-empire-508912-p6.iam.gserviceaccount.com",
+        "client_id": "112838976119952241535",
+        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+        "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/devrim%40ringed-empire-508912-p6.iam.gserviceaccount.com",
+        "universe_domain": "googleapis.com"
+    }
+
+    # Geçici dosya yöntemiyle tüm PEM/Padding/ASN.1 hatalarını tamamen ortadan kaldırıyoruz
     with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as f:
         json.dump(creds_dict, f)
         temp_filename = f.name
