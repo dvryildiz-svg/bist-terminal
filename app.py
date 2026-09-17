@@ -8,21 +8,28 @@ from datetime import datetime
 def google_sheets_baglan():
     creds_dict = json.loads(st.secrets["google_credentials"])
     
-    # --- KURŞUN GEÇİRMEZ PEM DÜZENLEYİCİ ---
+    # --- NOKTA VE ÇÖP TEMİZLEME FİLTRESİ ---
     pk = creds_dict.get("private_key", "")
-    
-    # Streamlit'in bozabildiği tüm satır sonu ve kaçış karakterlerini temizliyoruz
     pk = pk.replace("\\n", "\n").strip()
     
-    # Eğer şifre tırnak içinde kaldıysa temizle
-    if pk.startswith('"') and pk.endswith('"'):
-        pk = pk[1:-1]
+    # Şifre gövdesine sızmış olabilecek yabancı noktaları (.) ve geçersiz karakterleri temizliyoruz
+    # (Base64 anahtarlarında nokta asla bulunmaz)
+    if "-----BEGIN PRIVATE KEY-----" in pk and "-----END PRIVATE KEY-----" in pk:
+        baslangic = pk.find("-----BEGIN PRIVATE KEY-----")
+        bitis = pk.find("-----END PRIVATE KEY-----") + len("-----END PRIVATE KEY-----")
+        header_footer = pk[baslangic:bitis]
+        
+        # Sadece gövde kısmını alıp içindeki olası noktaları yok ediyoruz
+        govde = header_footer.replace("-----BEGIN PRIVATE KEY-----", "").replace("-----END PRIVATE KEY-----", "")
+        govde = govde.replace(".", "").strip() # İşte inatçı noktayı yok ettiğimiz yer!
+        
+        pk = "-----BEGIN PRIVATE KEY-----\n" + govde + "\n-----END PRIVATE KEY-----\n"
         
     creds_dict["private_key"] = pk
     # ---------------------------------------
     
     scopes = [
-        "https://www.googleapis.com/auth/spreadsheets",
+        "https://spreadsheets.google.com/feeds",
         "https://www.googleapis.com/auth/drive"
     ]
     creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
