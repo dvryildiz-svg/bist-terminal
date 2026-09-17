@@ -2,21 +2,30 @@ import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime
+import re
 
 # --- GOOGLE SHEETS BAĞLANTISI ---
 def google_sheets_baglan():
     creds_dict = dict(st.secrets["gcp_service_account"])
-    
-    # --- YER TUTUCU VE NOKTA TEMİZLEME FİLTRESİ ---
     pk = creds_dict.get("private_key", "")
     
-    # Yer tutucu olarak kalmış olabilecek tüm üç noktaları (...) ve yabancı noktaları temizliyoruz
-    pk = pk.replace("...", "").replace("..", "")
+    # --- NİHAİ PEM TEMİZLEME VE YENİDEN İNŞA MOTORU ---
+    # Şifrenin içindeki tüm harf, rakam, +, / ve = dışındaki bozuk/özel karakterleri yok et
+    clean_chars = re.findall(r'[A-Za-z0-9+/=]', pk)
+    body_str = "".join(clean_chars)
     
-    # Satır sonlarını düzenle
-    pk = pk.replace("\\n", "\n").strip()
-    creds_dict["private_key"] = pk
-    # -----------------------------------------------
+    # Dolgu karakterlerini matematiksel olarak sabitle
+    body_str = body_str.rstrip('=')
+    padding = len(body_str) % 4
+    if padding:
+        body_str += '=' * (4 - padding)
+        
+    # 64 karakterlik satırlar halinde kusursuz PEM formatına getir
+    lines = [body_str[i:i+64] for i in range(0, len(body_str), 64)]
+    fixed_pk = "-----BEGIN PRIVATE KEY-----\n" + "\n".join(lines) + "\n-----END PRIVATE KEY-----\n"
+    
+    creds_dict["private_key"] = fixed_pk
+    # ------------------------------------------------
     
     scopes = [
         "https://www.googleapis.com/auth/spreadsheets",
