@@ -40,11 +40,12 @@ if st.button("İşlemi Kaydet"):
             toplam_tutar = lot * fiyat
             
             # Veriyi listeye çevirip tabloya gönderiyoruz
-            # Sıralama: A (Zaman), B (Kullanıcı), C (Hisse), D (Tür), E (Lot), F (Fiyat), G (Tutar)
             yeni_islem = [zaman, kullanici, hisse.upper(), islem_turu, lot, fiyat, toplam_tutar]
             sekme.append_row(yeni_islem)
             
             st.success(f"Başarılı! {hisse} işlemi Portfoy_Arsivi sekmesine kaydedildi.")
-        
-except Exception as e:
+            
+        except Exception as e:
             st.error(f"Hata Detayı: {type(e).__name__} - {str(e)}")
+    else:
+        st.warning("Lütfen hisse sembolü, lot ve fiyat bilgilerini eksiksiz girin.")
