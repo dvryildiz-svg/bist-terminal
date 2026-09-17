@@ -14,7 +14,8 @@ st.set_page_config(
 st.title("🦅 BİST & Çoklu Varlık Profesyonel Fon Yönetim Terminali")
 st.markdown(
     "Sıralı Sinyaller (AL1, SAT1...), Canlı Döviz/Altın/Gümüş Fiyatları, Günlük"
-    " Nemalandırma (%0,12) ve Çoklu Kullanıcı Liderlik Matrisi."
+    " Nemalandırma (%0,12), Tarihsel Varlık Grafikleri ve Çoklu Kullanıcı"
+    " Liderlik Matrisi."
 )
 
 bist_hisseler = sorted([
@@ -272,11 +273,13 @@ if "kullanicilar" not in st.session_state:
       "Devrim": {
           "nakit": 1000000.0,
           "portfoy_hareketleri": [],
+          "gunluk_gecmis": [],  # Tarihsel varlık serüveni
           "son_hesap_tarihi": str(datetime.date.today()),
       },
       "Ahmet": {
           "nakit": 1000000.0,
           "portfoy_hareketleri": [],
+          "gunluk_gecmis": [],
           "son_hesap_tarihi": str(datetime.date.today()),
       },
   }
@@ -295,6 +298,7 @@ if st.sidebar.button("Profili Oluştur/Geç"):
       st.session_state.kullanicilar[temiz_ad] = {
           "nakit": 1000000.0,
           "portfoy_hareketleri": [],
+          "gunluk_gecmis": [],
           "son_hesap_tarihi": str(datetime.date.today()),
       }
       st.success(f"Hoş geldin {temiz_ad}! 1M TL sermayeniz tanımlandı.")
@@ -313,7 +317,7 @@ if aktif_profil["son_hesap_tarihi"] != bugun_str:
 tab_tekli, tab_matris, tab_portfoy, tab_liderlik = st.tabs([
     "📊 Tekli Hisse & Derin Analiz",
     "🌐 Tüm Piyasa Sinyal Matrisi (Tarama)",
-    f"💼 Sanal Portföy ({secilen_kullanici})",
+    f"💼 Sanal Portföy & Geçmiş ({secilen_kullanici})",
     "🏆 Liderlik & Yatırımcılar Matrisi",
 ])
 
@@ -461,16 +465,19 @@ with tab_matris:
 
 with tab_portfoy:
   st.subheader(
-      f"💼 Sanal Portföy & Çoklu Varlık Terminali ({secilen_kullanici})"
+      f"💼 Sanal Portföy, Tarihsel Serüven & Kırılımlar ({secilen_kullanici})"
   )
   st.markdown(
-      "Başlangıç sermayeniz **1.000.000 TL**'dir. Boşta kalan nakitleriniz"
-      " günlük **%0,12 repo faizi** ile nemalanır. BİST hisseleri, Döviz (USD,"
-      " EUR, GBP) ve Kıymetli Madenler (Altın, Gümüş) alıp satabilirsiniz."
+      "Başlangıç sermayeniz **1.000.000 TL**'dir. Nakitleriniz günlük **%0,12"
+      " repo faizi** ile nemalanır. Varlık kırılımlarınızı ve tarihsel portföy"
+      " eğrinizi aşağıda takip edebilirsiniz."
   )
 
   portfoy_durumu = {}
   toplam_varlik_degeri = 0
+  hisse_degeri_toplam = 0
+  doviz_degeri_toplam = 0
+  altin_gumus_degeri_toplam = 0
 
   for islem in aktif_profil["portfoy_hareketleri"]:
     h = islem["Hisse"]
@@ -513,6 +520,15 @@ with tab_portfoy:
       kar_zarar_yuzde = (kar_zarar_tl / maliyet * 100) if maliyet > 0 else 0
 
       toplam_varlik_degeri += piyasa_degeri
+
+      # Kırılım Sınıflandırması
+      if h in ["USD/TRY", "EUR/TRY", "GBP/TRY"]:
+        doviz_degeri_toplam += piyasa_degeri
+      elif h in ["Gram Altın (TL)", "Gram Gümüş (TL)"]:
+        altin_gumus_degeri_toplam += piyasa_degeri
+      else:
+        hisse_degeri_toplam += piyasa_degeri
+
       aktif_pozisyonlar.append({
           "Varlık / Hisse": h,
           "Net Miktar / Lot": veri["lot"],
@@ -526,10 +542,31 @@ with tab_portfoy:
   toplam_kar_zarar = toplam_toplam - 1000000.0
   toplam_kar_zarar_yuzde = (toplam_kar_zarar / 1000000.0) * 100
 
+  # Günlük Tarihsel Kayıt Ekleme (Bugünün tarihiyle snapshot)
+  bugun_tarih = str(datetime.date.today())
+  # Eğer bugün için kayıt yoksa ekle veya son kaydı güncelle
+  mevcut_gunluk = aktif_profil["gunluk_gecmis"]
+  if not mevcut_gunluk or mevcut_gunluk[-1]["Tarih"] != bugun_tarih:
+    mevcut_gunluk.append({
+        "Tarih": bugun_tarih,
+        "Toplam Varlık": toplam_toplam,
+        "Nakit": aktif_profil["nakit"],
+        "Hisse": hisse_degeri_toplam,
+        "Döviz": doviz_degeri_toplam,
+        "Altın & Gümüş": altin_gumus_degeri_toplam,
+    })
+  else:
+    # Aynı gün içindeki değişimleri güncelle
+    mevcut_gunluk[-1]["Toplam Varlık"] = toplam_toplam
+    mevcut_gunluk[-1]["Nakit"] = aktif_profil["nakit"]
+    mevcut_gunluk[-1]["Hisse"] = hisse_degeri_toplam
+    mevcut_gunluk[-1]["Döviz"] = doviz_degeri_toplam
+    mevcut_gunluk[-1]["Altın & Gümüş"] = altin_gumus_degeri_toplam
+
   c1, c2, c3, c4 = st.columns(4)
   c1.metric("Toplam Varlık", f"{toplam_toplam:,.2f} TL")
-  c2.metric("Nakit Bakiye (Nemalanan)", f"{aktif_profil['nakit']:,.2f} TL")
-  c3.metric("Varlıkların Piyasa Değeri", f"{toplam_varlik_degeri:,.2f} TL")
+  c2.metric("Nakit (Repo Nemalı)", f"{aktif_profil['nakit']:,.2f} TL")
+  c3.metric("Varlıklar Değeri", f"{toplam_varlik_degeri:,.2f} TL")
   c4.metric(
       "Toplam Kâr / Zarar",
       f"{toplam_kar_zarar:,.2f} TL",
@@ -537,12 +574,40 @@ with tab_portfoy:
   )
 
   st.markdown("---")
+
+  # Tarihsel Grafik ve Kırılımlar
+  col_grafik1, col_grafik2 = st.columns(2)
+  with col_grafik1:
+    st.subheader("📈 Tarihsel Varlık Eğrisi (Historic)")
+    if len(mevcut_gunluk) > 0:
+      df_gecmis_varlik = pd.DataFrame(mevcut_gunluk).set_index("Tarih")
+      st.line_chart(df_gecmis_varlik[["Toplam Varlık"]])
+    else:
+      st.info("Henüz tarihsel veri oluşmadı.")
+
+  with col_grafik2:
+    st.subheader("🥧 Varlık Sınıfı Kırılımı (TL)")
+    kirilim_df = pd.DataFrame({
+        "Varlık Sınıfı": [
+            "Nakit / Repo",
+            "BİST Hisseler",
+            "Döviz",
+            "Altın & Gümüş",
+        ],
+        "Tutar (TL)": [
+            aktif_profil["nakit"],
+            hisse_degeri_toplam,
+            doviz_degeri_toplam,
+            altin_gumus_degeri_toplam,
+        ],
+    }).set_index("Varlık Sınıfı")
+    st.bar_chart(kirilim_df)
+
+  st.markdown("---")
   col_islem1, col_islem2 = st.columns(2)
 
   with col_islem1:
     st.subheader("📝 Emir Girişi (Alış / Satış)")
-
-    # Seçilen varlığın anlık fiyatını önden çekelim ki varsayılan olarak yazabilelim
     secilen_varlik_gecici = st.selectbox(
         "Varlık / Hisse Seçin", tum_islem_varliklari, key="secilen_varlik_input"
     )
@@ -634,7 +699,7 @@ with tab_portfoy:
       st.info("Portföyünüzde şu an aktif varlık yok, nakit durumundasınız.")
 
   st.markdown("---")
-  st.subheader("📜 Geçmiş İşlem Günlüğünüz")
+  st.subheader("📜 Geçmiş İşlem Günlüğünüz & Günlük Kırılım Arşivi")
   if aktif_profil["portfoy_hareketleri"]:
     df_gecmis = pd.DataFrame(aktif_profil["portfoy_hareketleri"])
     st.dataframe(
@@ -646,12 +711,14 @@ with tab_portfoy:
         use_container_width=True,
         hide_index=True,
     )
-    if st.button("🔄 Portföyü Sıfırla (1M TL'ye Dön)"):
-      aktif_profil["nakit"] = 1000000.0
-      aktif_profil["portfoy_hareketleri"] = []
-      st.rerun()
   else:
     st.write("Henüz işlem geçmişiniz yok.")
+
+  if st.button("🔄 Portföyü Sıfırla (1M TL'ye Dön)"):
+    aktif_profil["nakit"] = 1000000.0
+    aktif_profil["portfoy_hareketleri"] = []
+    aktif_profil["gunluk_gecmis"] = []
+    st.rerun()
 
 with tab_liderlik:
   st.subheader("🏆 Yatırımcılar Liderlik & Performans Matrisi")
