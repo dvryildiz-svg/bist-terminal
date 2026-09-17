@@ -8,14 +8,10 @@ from datetime import datetime
 
 # --- GOOGLE SHEETS BAĞLANTISI ---
 def google_sheets_baglan():
-    # Tek satırlık güvenli JSON string'ini sözlüğe çeviriyoruz
-    creds_dict = json.loads(st.secrets["google_credentials"])
-    
-    # Kaçış karakterlerini Python'da kusursuz satırlara dönüştürüyoruz
-    if "private_key" in creds_dict:
-        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+    # TOML secrets verisini doğrudan sözlük olarak alıyoruz (JSON parse derdi yok!)
+    creds_dict = dict(st.secrets)
 
-    # Geçici dosya yöntemiyle PEM/Padding sorunlarını tamamen ortadan kaldırıyoruz
+    # Güvenli geçici dosya yöntemiyle PEM/Padding hatalarını tamamen önlüyoruz
     with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as f:
         json.dump(creds_dict, f)
         temp_filename = f.name
