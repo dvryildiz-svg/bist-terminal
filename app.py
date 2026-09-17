@@ -6,18 +6,16 @@ import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime
 
-# --- GOOGLE SHEETS BAĞLANTISI (GEÇİCİ DOSYA YÖNTEMİ) ---
+# --- GOOGLE SHEETS BAĞLANTISI ---
 def google_sheets_baglan():
-    # Secrets kasasından veriyi sözlük olarak alıyoruz (İster JSON string ister TOML olsun çalışır)
-    try:
-        if "google_credentials" in st.secrets:
-            creds_dict = json.loads(st.secrets["google_credentials"])
-        else:
-            creds_dict = dict(st.secrets["gcp_service_account"])
-    except Exception:
-        creds_dict = dict(st.secrets["gcp_service_account"])
+    # Secrets kasasındaki çok satırlı TOML metnini alıp sözlüğe çeviriyoruz
+    creds_dict = json.loads(st.secrets["google_credentials"])
+    
+    # Kaçış karakteri sorununu Python'da tertemiz çözüyoruz
+    if "private_key" in creds_dict:
+        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
 
-    # Veriyi sunucuda anlık olarak fiziksel bir JSON dosyasına yazıyoruz
+    # Geçici dosya yöntemiyle PEM/Padding hatalarını tamamen önlüyoruz
     with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as f:
         json.dump(creds_dict, f)
         temp_filename = f.name
@@ -29,7 +27,6 @@ def google_sheets_baglan():
             "https://www.googleapis.com/auth/drive"
         ]
         
-        # Google, dosyayı doğrudan okuduğu için PEM veya padding hatası asla vermez
         creds = Credentials.from_service_account_file(temp_filename, scopes=scopes)
         client = gspread.authorize(creds)
         
@@ -38,7 +35,6 @@ def google_sheets_baglan():
         return sekme
         
     finally:
-        # İşlem bitince geçici dosyayı güvenle temizliyoruz
         if os.path.exists(temp_filename):
             os.unlink(temp_filename)
 
