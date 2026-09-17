@@ -1,7 +1,6 @@
 import json
 import streamlit as st
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 
 # --- GOOGLE SHEETS BAĞLANTISI ---
@@ -9,9 +8,8 @@ def google_sheets_baglan():
     # Şifreyi Streamlit'in gizli kasasından okuyoruz
     creds_dict = json.loads(st.secrets["google_credentials"])
     
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-    client = gspread.authorize(creds)
+    # gspread'in kendi modern altyapısını kullanıyoruz
+    client = gspread.service_account_from_dict(creds_dict)
     
     # Tablo ve sekme adını tam eşleştiriyoruz
     dosya = client.open("BIST_Trader_Arsivi")
