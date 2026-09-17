@@ -17,20 +17,20 @@ st.markdown("""
     .main-header {
         font-size: 28px;
         font-weight: 700;
-        color: #0F172A;
+        color: #F8FAFC;
         margin-bottom: 0px;
     }
     .sub-header {
         font-size: 14px;
-        color: #64748B;
+        color: #94A3B8;
         margin-bottom: 20px;
     }
     .footer-text {
         text-align: center;
         font-size: 12px;
-        color: #94A3B8;
+        color: #64748B;
         padding: 30px 0px 10px 0px;
-        border-top: 1px solid #E2E8F0;
+        border-top: 1px solid #1E293B;
         margin-top: 50px;
     }
     </style>
