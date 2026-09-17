@@ -6,11 +6,9 @@ from datetime import datetime
 
 # --- GOOGLE SHEETS BAĞLANTISI ---
 def google_sheets_baglan():
-    # Şifreyi doğrudan sözlük olarak alıyoruz
-    creds_str = st.secrets["google_credentials"]
-    creds_dict = json.loads(creds_str)
+    # Streamlit secrets içindeki multi-line string'i doğrudan dict'e çeviriyoruz
+    creds_dict = json.loads(st.secrets["google_credentials"])
     
-    #oauth2client ham \n karakterlerini kendi içinde kusursuz çözer
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     client = gspread.authorize(creds)
