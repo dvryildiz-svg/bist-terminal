@@ -8,10 +8,10 @@ from datetime import datetime
 
 # --- GOOGLE SHEETS BAĞLANTISI ---
 def google_sheets_baglan():
-    # TOML secrets verisini doğrudan sözlük olarak alıyoruz (JSON parse derdi yok!)
-    creds_dict = dict(st.secrets)
+    # TOML tablosunu doğrudan Python sözlüğüne çeviriyoruz
+    creds_dict = dict(st.secrets["gcp_service_account"])
 
-    # Güvenli geçici dosya yöntemiyle PEM/Padding hatalarını tamamen önlüyoruz
+    # Geçici dosya yöntemiyle tüm PEM/Padding hatalarını engelliyoruz
     with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as f:
         json.dump(creds_dict, f)
         temp_filename = f.name
