@@ -8,20 +8,14 @@ from datetime import datetime
 
 # --- GOOGLE SHEETS BAĞLANTISI ---
 def google_sheets_baglan():
-    # Secrets kasasındaki veriyi güvenli bir şekilde sözlüğe alıyoruz
-    if "gcp_service_account" in st.secrets:
-        creds_dict = dict(st.secrets["gcp_service_account"])
-    else:
-        creds_dict = json.loads(st.secrets["google_credentials"])
+    # TOML secrets verisini sözlük olarak alıyoruz
+    creds_dict = dict(st.secrets["gcp_service_account"])
+    
+    # Dizi (array) halinde gelen private_key satırlarını gerçek PEM formatı için \n ile birleştiriyoruz
+    if isinstance(creds_dict.get("private_key"), list):
+        creds_dict["private_key"] = "\n".join(creds_dict["private_key"])
 
-    # EN KRİTİK DÜZELTME: private_key içindeki bozulmuş \n veya \\n ifadelerini 
-    # Python düzeyinde gerçek alt satırlara (gerçek PEM formatına) çeviriyoruz.
-    if "private_key" in creds_dict:
-        pk = creds_dict["private_key"]
-        pk = pk.replace("\\\\n", "\n").replace("\\n", "\n")
-        creds_dict["private_key"] = pk
-
-    # Geçici dosya yöntemiyle PEM/Padding/ASN.1 hatalarını tamamen ortadan kaldırıyoruz
+    # Geçici dosya yöntemiyle tüm PEM/Padding hatalarını %100 engelliyoruz
     with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as f:
         json.dump(creds_dict, f)
         temp_filename = f.name
