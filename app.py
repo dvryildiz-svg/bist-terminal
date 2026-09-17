@@ -6,10 +6,21 @@ from datetime import datetime
 
 # --- GOOGLE SHEETS BAĞLANTISI ---
 def google_sheets_baglan():
-    # Streamlit secrets içindeki JSON verisini alıyoruz
     creds_dict = json.loads(st.secrets["google_credentials"])
     
-    # Google'ın resmi ve modern kimlik doğrulama altyapısını kullanıyoruz
+    # --- KURŞUN GEÇİRMEZ PEM DÜZENLEYİCİ ---
+    pk = creds_dict.get("private_key", "")
+    
+    # Streamlit'in bozabildiği tüm satır sonu ve kaçış karakterlerini temizliyoruz
+    pk = pk.replace("\\n", "\n").strip()
+    
+    # Eğer şifre tırnak içinde kaldıysa temizle
+    if pk.startswith('"') and pk.endswith('"'):
+        pk = pk[1:-1]
+        
+    creds_dict["private_key"] = pk
+    # ---------------------------------------
+    
     scopes = [
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive"
