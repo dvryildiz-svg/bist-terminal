@@ -3,17 +3,18 @@ from feedparser import parse
 from isyatirimhisse import fetch_stock_data
 import pandas as pd
 import streamlit as st
+import yfinance as yf
 
 st.set_page_config(
-    page_title="BİST Akıllı Karar Destek & Sanal Portföy",
-    page_icon="📈",
+    page_title="BİST & Varlık Yönetim Terminali",
+    page_icon="🦅",
     layout="wide",
 )
 
-st.title("📈 BİST Profesyonel Karar Destek, Sinyal Matrisi & Sanal Portföy")
+st.title("🦅 BİST & Çoklu Varlık Profesyonel Fon Yönetim Terminali")
 st.markdown(
-    "Sıralı Sinyaller (AL1, SAT1...), Günlük Veri Analizi ve Manuel İşlem Girişli"
-    " 1 Milyon TL Sermayeli Sanal Portföy Modülü."
+    "Sıralı Sinyaller (AL1, SAT1...), Döviz/Altın/Gümüş Entegrasyonu, Günlük"
+    " Nemalandırma (%0,12) ve Çoklu Kullanıcı Liderlik Matrisi."
 )
 
 bist_hisseler = sorted([
@@ -75,6 +76,16 @@ bist_hisseler = sorted([
     "YKBNK",
 ])
 
+# Alternatif Varlıklar (Döviz, Altın, Gümüş)
+alternatif_varliklar = [
+    "USD/TRY",
+    "EUR/TRY",
+    "GBP/TRY",
+    "Gram Altın (TL)",
+    "Gram Gümüş (TL)",
+]
+tum_islem_varliklari = sorted(bist_hisseler) + alternatif_varliklar
+
 bitis_tarihi = datetime.datetime.now().strftime("%d-%m-%Y")
 baslangic_tarihi = (
     datetime.datetime.now() - datetime.timedelta(days=365)
@@ -111,6 +122,33 @@ def veri_cek_ve_hazirla(hisse):
   except:
     pass
   return None
+
+
+@st.cache_data(ttl=300)
+def alternatif_fiyat_cek(varlik):
+  try:
+    if varlik == "USD/TRY":
+      t = yf.Ticker("USDTRY=X")
+      return t.history(period="1d")["Close"].iloc[-1]
+    elif varlik == "EUR/TRY":
+      t = yf.Ticker("EURTRY=X")
+      return t.history(period="1d")["Close"].iloc[-1]
+    elif varlik == "GBP/TRY":
+      t = yf.Ticker("GBPTRY=X")
+      return t.history(period="1d")["Close"].iloc[-1]
+    elif varlik == "Gram Altın (TL)":
+      # Ons altın ($/ons) * USDTRY / 31.1035
+      altin_ons = yf.Ticker("GC=F").history(period="1d")["Close"].iloc[-1]
+      usd_try = yf.Ticker("USDTRY=X").history(period="1d")["Close"].iloc[-1]
+      return (altin_ons * usd_try) / 31.1035
+    elif varlik == "Gram Gümüş (TL)":
+      # Ons gümüş ($/ons) * USDTRY / 31.1035
+      gumus_ons = yf.Ticker("SI=F").history(period="1d")["Close"].iloc[-1]
+      usd_try = yf.Ticker("USDTRY=X").history(period="1d")["Close"].iloc[-1]
+      return (gumus_ons * usd_try) / 31.1035
+  except:
+    return 0.0
+  return 0.0
 
 
 @st.cache_data(ttl=1800)
@@ -231,16 +269,57 @@ def akilli_analiz_hesapla(df, kap_bildirimleri, haberler):
   )
 
 
-# Sanal Portföy Bellek Yönetimi (Session State)
-if "nakit" not in st.session_state:
-  st.session_state.nakit = 1000000.0
-if "portfoy_hareketleri" not in st.session_state:
-  st.session_state.portfoy_hareketleri = []
+# Çoklu Kullanıcı Veritabanı (Session State Ana Havuzu)
+if "kullanicilar" not in st.session_state:
+  st.session_state.kullanicilar = {
+      "Devrim": {
+          "nakit": 1000000.0,
+          "portfoy_hareketleri": [],
+          "son_hesap_tarihi": str(datetime.date.today()),
+      },
+      "Ahmet": {
+          "nakit": 1000000.0,
+          "portfoy_hareketleri": [],
+          "son_hesap_tarihi": str(datetime.date.today()),
+      },
+  }
 
-tab_tekli, tab_matris, tab_portfoy = st.tabs([
+# Kenar Çubuğu: Kullanıcı Seçimi / Yönetimi
+st.sidebar.header("👤 Yatırımcı Profili")
+secilen_kullanici = st.sidebar.selectbox(
+    "Aktif Trader Seçin:", list(st.session_state.kullanicilar.keys())
+)
+
+yeni_kullanici_adi = st.sidebar.text_input("Veya Yeni Trader Ekle:")
+if st.sidebar.button("Profili Oluştur/Geç"):
+  if yeni_kullanici_adi.strip():
+    temiz_ad = yeni_kullanici_adi.strip()
+    if temiz_ad not in st.session_state.kullanicilar:
+      st.session_state.kullanicilar[temiz_ad] = {
+          "nakit": 1000000.0,
+          "portfoy_hareketleri": [],
+          "son_hesap_tarihi": str(datetime.date.today()),
+      }
+      st.success(f"Hoş geldin {temiz_ad}! 1M TL sermayeniz tanımlandı.")
+      st.rerun()
+
+# Aktif kullanıcının verilerini çekelim
+aktif_profil = st.session_state.kullanicilar[secilen_kullanici]
+
+# Günlük Nakit Nemalandırma Kontrolü (%0,12 günlük repo faizi)
+bugun_str = str(datetime.date.today())
+if aktif_profil["son_hesap_tarihi"] != bugun_str:
+  # Basit günlük %0.12 nemalandırma
+  faiz_getirisi = aktif_profil["nakit"] * 0.0012
+  aktif_profil["nakit"] += faiz_getirisi
+  aktif_profil["son_hesap_tarihi"] = bugun_str
+
+
+tab_tekli, tab_matris, tab_portfoy, tab_liderlik = st.tabs([
     "📊 Tekli Hisse & Derin Analiz",
     "🌐 Tüm Piyasa Sinyal Matrisi (Tarama)",
-    "💼 Sanal Portföy (1M TL)",
+    f"💼 Sanal Portföy ({secilen_kullanici})",
+    "🏆 Liderlik & Yatırımcılar Matrisi",
 ])
 
 with tab_tekli:
@@ -386,17 +465,19 @@ with tab_matris:
       st.warning("Tarama sırasında yeterli veri alınamadı.")
 
 with tab_portfoy:
-  st.subheader("💼 Sanal Portföy & Manuel İşlem Terminali")
+  st.subheader(
+      f"💼 Sanal Portföy & Çoklu Varlık Terminali ({secilen_kullanici})"
+  )
   st.markdown(
-      "Başlangıç sermayeniz **1.000.000 TL**'dir. Gerçekleştirdiğiniz alım ve"
-      " satım fiyatlarını manuel girerek portföy değerinizi canlı takip"
-      " edebilirsiniz."
+      "Başlangıç sermayeniz **1.000.000 TL**'dir. Boşta kalan nakitleriniz"
+      " günlük **%0,12 repo faizi** ile nemalanır. BİST hisseleri, Döviz (USD,"
+      " EUR, GBP) ve Kıymetli Madenler (Altın, Gümüş) alıp satabilirsiniz."
   )
 
   portfoy_durumu = {}
-  toplam_hisse_degeri = 0
+  toplam_varlik_degeri = 0
 
-  for islem in st.session_state.portfoy_hareketleri:
+  for islem in aktif_profil["portfoy_hareketleri"]:
     h = islem["Hisse"]
     tip = islem["Tip"]
     lot = islem["Miktar"]
@@ -421,35 +502,40 @@ with tab_portfoy:
   aktif_pozisyonlar = []
   for h, veri in portfoy_durumu.items():
     if veri["lot"] > 0:
-      df_p = veri_cek_ve_hazirla(h)
-      guncel_piyasa_fiyati = (
-          df_p["Kapanis"].iloc[-1]
-          if (df_p is not None and not df_p.empty)
-          else (veri["maliyet_harcama"] / veri["lot"])
-      )
-      piyasa_degeri = veri["lot"] * guncel_piyasa_fiyati
+      # Güncel fiyat tespiti (Hisse mi Alternatif Varlık mı?)
+      if h in alternatif_varliklar:
+        guncel_fiyat = alternatif_fiyat_cek(h)
+      else:
+        df_p = veri_cek_ve_hazirla(h)
+        guncel_fiyat = (
+            df_p["Kapanis"].iloc[-1]
+            if (df_p is not None and not df_p.empty)
+            else (veri["maliyet_harcama"] / veri["lot"])
+        )
+
+      piyasa_degeri = veri["lot"] * guncel_fiyat
       maliyet = veri["maliyet_harcama"]
       kar_zarar_tl = piyasa_degeri - maliyet
       kar_zarar_yuzde = (kar_zarar_tl / maliyet * 100) if maliyet > 0 else 0
 
-      toplam_hisse_degeri += piyasa_degeri
+      toplam_varlik_degeri += piyasa_degeri
       aktif_pozisyonlar.append({
-          "Hisse": h,
-          "Net Lot": veri["lot"],
+          "Varlık / Hisse": h,
+          "Net Miktar / Lot": veri["lot"],
           "Toplam Maliyet (TL)": maliyet,
           "Güncel Değer (TL)": piyasa_degeri,
           "Kâr / Zarar (TL)": kar_zarar_tl,
           "Kâr / Zarar (%)": kar_zarar_yuzde,
       })
 
-  toplam_varlik = st.session_state.nakit + toplam_hisse_degeri
-  toplam_kar_zarar = toplam_varlik - 1000000.0
+  toplam_toplam = aktif_profil["nakit"] + toplam_varlik_degeri
+  toplam_kar_zarar = toplam_toplam - 1000000.0
   toplam_kar_zarar_yuzde = (toplam_kar_zarar / 1000000.0) * 100
 
   c1, c2, c3, c4 = st.columns(4)
-  c1.metric("Toplam Varlık", f"{toplam_varlik:,.2f} TL")
-  c2.metric("Nakit Bakiye", f"{st.session_state.nakit:,.2f} TL")
-  c3.metric("Hisselerdeki Değer", f"{toplam_hisse_degeri:,.2f} TL")
+  c1.metric("Toplam Varlık", f"{toplam_toplam:,.2f} TL")
+  c2.metric("Nakit Bakiye (Nemalanan)", f"{aktif_profil['nakit']:,.2f} TL")
+  c3.metric("Varlıkların Piyasa Değeri", f"{toplam_varlik_degeri:,.2f} TL")
   c4.metric(
       "Toplam Kâr / Zarar",
       f"{toplam_kar_zarar:,.2f} TL",
@@ -460,12 +546,14 @@ with tab_portfoy:
   col_islem1, col_islem2 = st.columns(2)
 
   with col_islem1:
-    st.subheader("📝 Yeni İşlem Gir (Emir Girişi)")
+    st.subheader("📝 Emir Girişi (Alış / Satış)")
     with st.form("emir_formu"):
-      islem_hisse = st.selectbox("Hisse Kodu", bist_hisseler)
+      islem_hisse = st.selectbox(
+          "Varlık / Hisse Seçin", tum_islem_varliklari
+      )
       islem_tipi = st.selectbox("İşlem Tipi", ["ALIŞ", "SATIŞ"])
       islem_miktar = st.number_input(
-          "Lot Miktarı", min_value=1, value=1000, step=100
+          "Miktar / Lot", min_value=1, value=1000, step=100
       )
       islem_fiyat = st.number_input(
           "Birim Fiyat (TL)", min_value=0.01, value=10.0, step=0.05
@@ -475,9 +563,9 @@ with tab_portfoy:
       if islem_onay:
         toplam_tutar = islem_miktar * islem_fiyat
         if islem_tipi == "ALIŞ":
-          if st.session_state.nakit >= toplam_tutar:
-            st.session_state.nakit -= toplam_tutar
-            st.session_state.portfoy_hareketleri.append({
+          if aktif_profil["nakit"] >= toplam_tutar:
+            aktif_profil["nakit"] -= toplam_tutar
+            aktif_profil["portfoy_hareketleri"].append({
                 "Zaman": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
                 "Hisse": islem_hisse,
                 "Tip": "ALIŞ",
@@ -486,7 +574,7 @@ with tab_portfoy:
                 "Tutar": toplam_tutar,
             })
             st.success(
-                f"✅ {islem_hisse} için {islem_miktar} lot alış emri"
+                f"✅ {islem_hisse} için {islem_miktar} adet alış"
                 " gerçekleştirildi!"
             )
             st.rerun()
@@ -495,8 +583,8 @@ with tab_portfoy:
         elif islem_tipi == "SATIŞ":
           mevcut_lot = portfoy_durumu.get(islem_hisse, {}).get("lot", 0)
           if mevcut_lot >= islem_miktar:
-            st.session_state.nakit += toplam_tutar
-            st.session_state.portfoy_hareketleri.append({
+            aktif_profil["nakit"] += toplam_tutar
+            aktif_profil["portfoy_hareketleri"].append({
                 "Zaman": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
                 "Hisse": islem_hisse,
                 "Tip": "SATIŞ",
@@ -505,23 +593,23 @@ with tab_portfoy:
                 "Tutar": toplam_tutar,
             })
             st.success(
-                f"✅ {islem_hisse} için {islem_miktar} lot satış emri"
+                f"✅ {islem_hisse} için {islem_miktar} adet satış"
                 " gerçekleştirildi!"
             )
             st.rerun()
           else:
             st.error(
-                f"❌ Portföyünüzde satabileceğiniz kadar {islem_hisse} lotu"
-                f" yok! (Mevcut: {mevcut_lot})"
+                f"❌ Portföyünüzde yeterli {islem_hisse} yok! (Mevcut:"
+                f" {mevcut_lot})"
             )
 
   with col_islem2:
-    st.subheader("📊 Aktif Portföy Dağılımı")
+    st.subheader("📊 Aktif Varlık Dağılımınız")
     if aktif_pozisyonlar:
       df_aktif = pd.DataFrame(aktif_pozisyonlar)
       st.dataframe(
           df_aktif.style.format({
-              "Net Lot": "{:,}",
+              "Net Miktar / Lot": "{:,}",
               "Toplam Maliyet (TL)": "{:,.2f} TL",
               "Güncel Değer (TL)": "{:,.2f} TL",
               "Kâr / Zarar (TL)": "{:,.2f} TL",
@@ -531,14 +619,12 @@ with tab_portfoy:
           hide_index=True,
       )
     else:
-      st.info(
-          "Şu anda aktif hisse pozisyonunuz bulunmuyor. Nakit durumundasınız."
-      )
+      st.info("Portföyünüzde şu an aktif varlık yok, nakit durumundasınız.")
 
   st.markdown("---")
   st.subheader("📜 Geçmiş İşlem Günlüğünüz")
-  if st.session_state.portfoy_hareketleri:
-    df_gecmis = pd.DataFrame(st.session_state.portfoy_hareketleri)
+  if aktif_profil["portfoy_hareketleri"]:
+    df_gecmis = pd.DataFrame(aktif_profil["portfoy_hareketleri"])
     st.dataframe(
         df_gecmis.style.format({
             "Miktar": "{:,}",
@@ -548,9 +634,76 @@ with tab_portfoy:
         use_container_width=True,
         hide_index=True,
     )
-    if st.button("🔄 Tüm Portföyü Sıfırla (1M TL'ye Dön)"):
-      st.session_state.nakit = 1000000.0
-      st.session_state.portfoy_hareketleri = []
+    if st.button("🔄 Portföyü Sıfırla (1M TL'ye Dön)"):
+      aktif_profil["nakit"] = 1000000.0
+      aktif_profil["portfoy_hareketleri"] = []
       st.rerun()
   else:
-    st.write("Henüz gerçekleştirilmiş bir işlem yok.")
+    st.write("Henüz işlem geçmişiniz yok.")
+
+with tab_liderlik:
+  st.subheader("🏆 Yatırımcılar Liderlik & Performans Matrisi")
+  st.markdown(
+      "Sistemdeki tüm kullanıcıların portföy değerleri, nakitleri ve toplam"
+      " kâr/zarar durumları karşılaştırmalı olarak aşağıda listelenmiştir."
+  )
+
+  liderlik_verileri = []
+  for kullanici_adi, prof in st.session_state.kullanicilar.items():
+    # Kullanıcının varlık değerini hesapla
+    p_durum = {}
+    hisse_val = 0
+    for isl in prof["portfoy_hareketleri"]:
+      h_k = isl["Hisse"]
+      t_tip = isl["Tip"]
+      m_mik = isl["Miktar"]
+      f_fiy = isl["Fiyat"]
+      if h_k not in p_durum:
+        p_durum[h_k] = {"lot": 0, "maliyet": 0}
+      if t_tip == "ALIŞ":
+        p_durum[h_k]["lot"] += m_mik
+        p_durum[h_k]["maliyet"] += m_mik * f_fiy
+      elif t_tip == "SATIŞ":
+        p_durum[h_k]["lot"] -= m_mik
+
+    for h_k, v_info in p_durum.items():
+      if v_info["lot"] > 0:
+        if h_k in alternatif_varliklar:
+          g_f = alternatif_fiyat_cek(h_k)
+        else:
+          df_l = veri_cek_ve_hazirla(h_k)
+          g_f = (
+              df_l["Kapanis"].iloc[-1]
+              if (df_l is not None and not df_l.empty)
+              else (v_info["maliyet"] / v_info["lot"])
+          )
+        hisse_val += v_info["lot"] * g_f
+
+    top_varlik = prof["nakit"] + hisse_val
+    k_z_tl = top_varlik - 1000000.0
+    k_z_yuzde = (k_z_tl / 1000000.0) * 100
+
+    liderlik_verileri.append({
+        "Trader": kullanici_adi,
+        "Toplam Varlık (TL)": top_varlik,
+        "Nakit (TL)": prof["nakit"],
+        "Varlıklar (TL)": hisse_val,
+        "Kâr / Zarar (TL)": k_z_tl,
+        "Performans (%)": k_z_yuzde,
+    })
+
+  if liderlik_verileri:
+    df_lider = pd.DataFrame(liderlik_verileri).sort_values(
+        by="Toplam Varlık (TL)", ascending=False
+    )
+    st.dataframe(
+        df_lider.style.format({
+            "Toplam Varlık (TL)": "{:,.2f} TL",
+            "Nakit (TL)": "{:,.2f} TL",
+            "Varlıklar (TL)": "{:,.2f} TL",
+            "Kâr / Zarar (TL)": "{:,.2f} TL",
+            "Performans (%)": "{:.2f}%",
+        }),
+        use_container_width=True,
+        hide_index=True,
+    )
