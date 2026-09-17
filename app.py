@@ -502,7 +502,7 @@ with tab_portfoy:
                 "Tip": "SATIŞ",
                 "Miktar": islem_miktar,
                 "Fiyat": islem_fiyat,
-                "Tutar": toplam_tusr ekrar := toplam_tutar,
+                "Tutar": toplam_tutar,
             })
             st.success(
                 f"✅ {islem_hisse} için {islem_miktar} lot satış emri"
