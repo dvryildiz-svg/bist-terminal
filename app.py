@@ -8,11 +8,14 @@ st.set_page_config(page_title="BIST Trader Terminal", layout="wide")
 
 st.title("BIST Trader - Portföy ve Analiz Terminali")
 
-# Google Apps Script Webhook URL'niz
+# Google Apps Script Webhook URL'niz (Kayıt için)
 WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbwmG2vAGJdW-8kDE3CpyBHNU8wptywkhrLW_HyLIYOm3l9yPH-O9hqNaAyYARdl5mbjeg/exec"
 
-# Sekmeler oluşturuyoruz
-tab1, tab2 = st.tabs(["📊 İşlem Girişi & Özet", "📈 Portföy Analizi & Grafikler"])
+# Google Sheets CSV Okuma Bağlantısı (Analiz ve Sanal Portföy için)
+# (Not: Google Sheets dosyanızın "Bağlantıya sahip herkes okuyabilir" şeklinde paylaşılmış olması gerekir)
+SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/1gq_..._buraya_dosya_id_gelecek .../export?format=csv&sheet=Portfoy_Arsivi"
+
+tab1, tab2 = st.tabs(["📊 İşlem Girişi & Özet", "📈 Sanal Portföy & Analiz"])
 
 with tab1:
     st.subheader("Yeni İşlem Kaydı")
@@ -57,10 +60,40 @@ with tab1:
             st.warning("Lütfen tüm alanları eksiksiz doldurun.")
 
 with tab2:
-    st.subheader("Portföy Dağılımı ve Analizler")
-    st.info("Bu alanda portföyündeki varlıkların ağırlıkları, kâr/zarar durumları ve performans grafikleri yer alacak.")
+    st.subheader("Sanal Portföy ve Varlık Dağılımı")
     
-    # Örnek Analiz Alanı (Google Sheets'ten veri okuma entegrasyonu için altyapı)
-    # İlerleyen adımlarda buraya doğrudan varlık özet tablolarını ve Streamlit grafiklerini (st.line_chart / st.bar_chart) ekleyebiliriz.
-    st.markdown("---")
-    st.write("🚀 **Piyasa Takip Modülü ve Detaylı Grafik Ekranları** aktif hale getirilmeye hazır.")
+    # Verileri Google Sheets'ten çekme denemesi
+    try:
+        # Doğrudan Google Sheets dosya ID'ni buraya yazarak CSV olarak okuyoruz
+        # Örnek CSV export linki yapısı: https://docs.google.com/spreadsheets/d/DOSYA_ID/export?format=csv&gid=SEKME_GID
+        sheet_id = "1gq_... (Google Sheets ID'niz)" 
+        csv_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv"
+        
+        df = pd.read_csv(csv_url)
+        
+        if not df.empty:
+            st.markdown("### 📋 Tüm İşlem Geçmişi")
+            st.dataframe(df, use_container_width=True)
+            
+            # Sanal Portföy Hesaplama (Özet Tablo)
+            st.markdown("### 💼 Anlık Varlık Durumu (Sanal Portföy)")
+            
+            # Alış ve satışları netleştirerek basit bir portföy özeti çıkarıyoruz
+            # Not: Tablonuzdaki sütun isimlerinin sırasına göre uyarlanmıştır
+            if "İşlem Türü" in df.columns and "Varlık" in df.columns:
+                # Basit bir netleştirme mantığı
+                df["Net_Lot"] = df.apply(lambda row: row["Lot"] if row["İşlem Türü"] == "ALIŞ" else -row["Lot"], axis=1)
+                portfoy_ozet = df.groupby("Varlık").agg({"Net_Lot": "sum", "Toplam Tutar": "sum"}).reset_index()
+                portfoy_ozet = portfoy_ozet[portfoy_ozet["Net_Lot"] > 0] # Sadece eldekiler
+                
+                st.dataframe(portfoy_ozet, use_container_width=True)
+                
+                # Grafik
+                if not portfoy_ozet.empty:
+                    st.bar_chart(portfoy_ozet.set_index("Varlık")["Net_Lot"])
+        else:
+            st.info("Henüz arşivde kayıtlı işlem bulunmuyor. İlk işlemini 'İşlem Girişi' sekmesinden ekleyebilirsin.")
+            
+    except Exception as e:
+        st.warning("Portföy verileri yüklenirken bağlantı bekleniyor. Google Sheets dosyanızın paylaşım ayarlarının 'Bağlantıya sahip herkes okuyabilir' olduğundan emin olun.")
+        st.info(f"Teknik Detay: {str(e)}")
