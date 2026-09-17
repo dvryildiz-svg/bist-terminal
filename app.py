@@ -1,23 +1,22 @@
 import json
 import streamlit as st
 import gspread
+import re
 from datetime import datetime
 
 # --- GOOGLE SHEETS BAĞLANTISI ---
 def google_sheets_baglan():
     creds_dict = json.loads(st.secrets["google_credentials"])
     
-    # --- YOK EDİCİ TEMİZLİK FİLTRESİ ---
+    # --- CERRAH FİLTRESİ (REGEX) ---
     pk = creds_dict.get("private_key", "")
     pk = pk.replace("\\n", "\n")
     
-    # Eğer kopyalama sırasında başına nokta (.), boşluk veya tırnak karıştıysa,
-    # şifrenin başladığı asıl noktayı bulup sadece o kısmı alıyoruz.
-    if "-----BEGIN PRIVATE KEY-----" in pk:
-        baslangic = pk.find("-----BEGIN PRIVATE KEY-----")
-        pk = pk[baslangic:]
-        
-    creds_dict["private_key"] = pk
+    # Şifrenin başında/sonunda ne kadar çöp (nokta, boşluk vb.) olursa olsun 
+    # sadece BEGIN ve END arasındaki o asıl metni cımbızla çekip alıyoruz.
+    match = re.search(r"-----BEGIN PRIVATE KEY-----.*?-----END PRIVATE KEY-----", pk, re.DOTALL)
+    if match:
+        creds_dict["private_key"] = match.group(0)
     # ----------------------------------
     
     client = gspread.service_account_from_dict(creds_dict)
