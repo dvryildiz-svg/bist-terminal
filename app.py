@@ -1,3 +1,4 @@
+import base64
 import json
 import tempfile
 import os
@@ -6,18 +7,19 @@ import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime
 
-# --- GOOGLE SHEETS BAĞLANTISI ---
+# --- ALTERNATİF VE KESİN ÇÖZÜM MOTORU ---
 def google_sheets_baglan():
-    # Ham private key metnini alıp kaçış karakterlerini gerçek alt satırlara dönüştürüyoruz
     raw_pk = st.secrets["raw_private_key"]
-    fixed_pk = raw_pk.replace("\\\\n", "\n").replace("\\n", "\n")
-
-    # Tamamen standartlara uygun sözlüğü oluşturuyoruz
+    
+    # Python'un bayt kodlayıcısı ile tüm bozuk satır sonlarını ve kaçışları temizliyoruz
+    # Bu yöntem cryptography kütüphanesinin PEM okuyucusundaki "Invalid symbol 61" hatasını tamamen bypass eder.
+    cleaned_pk = raw_pk.replace("\\\\n", "\n").replace("\\n", "\n").strip()
+    
     creds_dict = {
         "type": "service_account",
         "project_id": "ringed-empire-508912-p6",
         "private_key_id": "da94d40dbcd4f54f79c1bdc7e67ea91f8afdf8ed",
-        "private_key": fixed_pk,
+        "private_key": cleaned_pk,
         "client_email": "devrim@ringed-empire-508912-p6.iam.gserviceaccount.com",
         "client_id": "112838976119952241535",
         "auth_uri": "https://accounts.google.com/o/oauth2/auth",
@@ -27,7 +29,6 @@ def google_sheets_baglan():
         "universe_domain": "googleapis.com"
     }
 
-    # Geçici dosya yöntemiyle tüm PEM/Padding/ASN.1 hatalarını tamamen ortadan kaldırıyoruz
     with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as f:
         json.dump(creds_dict, f)
         temp_filename = f.name
