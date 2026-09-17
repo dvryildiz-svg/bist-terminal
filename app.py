@@ -2,21 +2,59 @@ import datetime
 from feedparser import parse
 from isyatirimhisse import fetch_stock_data
 import pandas as pd
+import requests
 import streamlit as st
 import yfinance as yf
 
+# Sayfa Konfigürasyonu
 st.set_page_config(
-    page_title="BİST & Varlık Yönetim Terminali",
-    page_icon="🦅",
-    layout="wide",
+    page_title="DY Terminal | BİST & Varlık Yönetimi", page_icon="🦅", layout="wide"
 )
 
-st.title("🦅 BİST & Çoklu Varlık Profesyonel Fon Yönetim Terminali")
-st.markdown(
-    "Sıralı Sinyaller (AL1, SAT1...), Canlı Döviz/Altın/Gümüş Fiyatları, Günlük"
-    " Nemalandırma (%0,12), Sanal Portföy Akıllı Radarı ve Çoklu Kullanıcı"
-    " Liderlik Matrisi."
-)
+# --- KURUMSAL ÖZEL CSS & STİL DÜZENLEMELERİ ---
+st.markdown("""
+    <style>
+    .main-header {
+        font-size: 28px;
+        font-weight: 700;
+        color: #0F172A;
+        margin-bottom: 0px;
+    }
+    .sub-header {
+        font-size: 14px;
+        color: #64748B;
+        margin-bottom: 20px;
+    }
+    .footer-text {
+        text-align: center;
+        font-size: 12px;
+        color: #94A3B8;
+        padding: 30px 0px 10px 0px;
+        border-top: 1px solid #E2E8F0;
+        margin-top: 50px;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# --- LOGO VE BAŞLIK ALANI ---
+col_logo, col_title = st.columns([1, 10])
+with col_logo:
+  st.markdown(
+      "<h1 style='text-align: center; margin: 0;'>🦅</h1>",
+      unsafe_allow_html=True,
+  )
+with col_title:
+  st.markdown(
+      "<div class='main-header'>DY Terminal — Profesyonel Fon & Varlık"
+      " Yönetim Platformu</div>",
+      unsafe_allow_html=True,
+  )
+  st.markdown(
+      "<div class='sub-header'>Sıralı Sinyaller (AL1, SAT1...), Canlı"
+      " Döviz/Altın/Gümüş, Günlük Repo Nemalandırma & Google Sheets Bulut"
+      " Arşivi</div>",
+      unsafe_allow_html=True,
+  )
 
 bist_hisseler = sorted([
     "AEFES",
@@ -85,6 +123,8 @@ alternatif_varliklar = [
     "Gram Gümüş (TL)",
 ]
 tum_islem_varliklari = sorted(bist_hisseler) + alternatif_varliklar
+
+GOOGLE_SHEET_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwPdejL3zlyh9xIHd3lgyFR5rSc3BzCT5PMK1hW7fZQULmIdhDii2RpYEEXd3mhIsNJbw/exec"
 
 bitis_tarihi = datetime.datetime.now().strftime("%d-%m-%Y")
 baslangic_tarihi = (
@@ -177,6 +217,23 @@ def haberleri_ve_kap_getir(hisse_kodu):
     return haberler, kap_bildirimleri
   except:
     return [], []
+
+
+def buluta_islem_gonder(kullanici, islem_tipi, hisse, miktar, fiyat, tutar):
+  try:
+    payload = {
+        "tip": "portfoy",
+        "zaman": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "kullanici": str(kullanici),
+        "hisse": str(hisse),
+        "islem_tipi": str(islem_tipi),
+        "miktar": float(miktar),
+        "fiyat": float(fiyat),
+        "tutar": float(tutar),
+    }
+    requests.post(GOOGLE_SHEET_WEB_APP_URL, json=payload)
+  except Exception as e:
+    print(f"Bulut kayıt hatası: {e}")
 
 
 def akilli_analiz_hesapla(df, kap_bildirimleri, haberler):
@@ -285,7 +342,7 @@ if "kullanicilar" not in st.session_state:
   }
 
 # Kenar Çubuğu: Kullanıcı Seçimi / Yönetimi
-st.sidebar.header("👤 Yatırımcı Profili")
+st.sidebar.markdown("### 👤 Yatırımcı Profili")
 secilen_kullanici = st.sidebar.selectbox(
     "Aktif Trader Seçin:", list(st.session_state.kullanicilar.keys())
 )
@@ -317,7 +374,7 @@ if aktif_profil["son_hesap_tarihi"] != bugun_str:
 tab_tekli, tab_matris, tab_portfoy, tab_liderlik = st.tabs([
     "📊 Tekli Hisse & Derin Analiz",
     "🌐 Tüm Piyasa Sinyal Matrisi (Tarama)",
-    f"💼 Sanal Portföy, Radar & Geçmiş ({secilen_kullanici})",
+    f"💼 Sanal Portföy, Radar & Bulut ({secilen_kullanici})",
     "🏆 Liderlik & Yatırımcılar Matrisi",
 ])
 
@@ -465,12 +522,12 @@ with tab_matris:
 
 with tab_portfoy:
   st.subheader(
-      f"💼 Sanal Portföy, Akıllı Radar & Tarihsel Serüven ({secilen_kullanici})"
+      f"💼 Sanal Portföy, Akıllı Radar & Bulut Arşiv ({secilen_kullanici})"
   )
   st.markdown(
-      "Başlangıç sermayeniz **1.000.000 TL**'dir. Nakitleriniz günlük **%0,12"
-      " repo faizi** ile nemalanır. Piyasadaki en güçlü AL fırsatları ve"
-      " portföyünüzdeki riskli (SAT) kağıtlar aşağıda taranmaktadır."
+      "Başlangıç sermayeniz **1.000.000 TL**'dir. Yaptığınız tüm alım satım"
+      " işlemleri eş zamanlı olarak **Google Sheets bulut arşivine**"
+      " kaydedilir."
   )
 
   portfoy_durumu = {}
@@ -571,15 +628,14 @@ with tab_portfoy:
 
   st.markdown("---")
 
-  # --- AKILLI RADAR BÖLÜMÜ (Portföy İçinde Anlık Fırsat & Risk Tarama) ---
+  # --- AKILLI RADAR BÖLÜMÜ ---
   with st.expander(
       "🎯 Anlık Piyasa Radarı: En Güçlü AL Fırsatları & Portföy Risk Alarmları",
       expanded=True,
   ):
     st.markdown(
-        "Bu alan, işlem yaparken hızlı karar alabilmeniz için piyasadaki en"
-        " iyi AL fırsatlarını ve portföyünüzdeki SAT sinyali veren riskli"
-        " kağıtları anlık tarar."
+        "Piyasadaki en iyi AL fırsatları ve portföyünüzdeki SAT sinyali veren"
+        " riskli kağıtlar."
     )
     if st.button("📡 Radarı Çalıştır ve Fırsatları Listele"):
       with st.spinner("Piyasa ve portföy taranıyor..."):
@@ -603,7 +659,6 @@ with tab_portfoy:
 
         if radar_sonuclari:
           df_rad = pd.DataFrame(radar_sonuclari)
-          # En güçlü 10 AL
           en_iyi_al = (
               df_rad[df_rad["Karar"] == "AL"]
               .sort_values(by="Puan", ascending=False)
@@ -627,7 +682,6 @@ with tab_portfoy:
             st.markdown(
                 "### 🔴 Portföyünüzde SAT / Baskı Altındaki Varlıklar"
             )
-            # Elimizdeki aktif hisseleri kontrol edelim
             aktif_hisseler_listesi = [
                 k for k, v in portfoy_durumu.items() if v["lot"] > 0 and k not in alternatif_varliklar
             ]
@@ -656,7 +710,6 @@ with tab_portfoy:
 
   st.markdown("---")
 
-  # Tarihsel Grafik ve Kırılımlar
   col_grafik1, col_grafik2 = st.columns(2)
   with col_grafik1:
     st.subheader("📈 Tarihsel Varlık Eğrisi (Historic)")
@@ -717,23 +770,33 @@ with tab_portfoy:
           format="%.2f",
       )
 
-      islem_onay = st.form_submit_button("Emri Gerçekleştir")
+      islem_onay = st.form_submit_button("Emri Gerçekleştir ve Buluta Kaydet")
       if islem_onay:
         toplam_tutar = islem_miktar * islem_fiyat
+        zaman_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
         if islem_tipi == "ALIŞ":
           if aktif_profil["nakit"] >= toplam_tutar:
             aktif_profil["nakit"] -= toplam_tutar
             aktif_profil["portfoy_hareketleri"].append({
-                "Zaman": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "Zaman": zaman_str,
                 "Hisse": islem_hisse,
                 "Tip": "ALIŞ",
                 "Miktar": islem_miktar,
                 "Fiyat": islem_fiyat,
                 "Tutar": toplam_tutar,
             })
+            buluta_islem_gonder(
+                secilen_kullanici,
+                "ALIŞ",
+                islem_hisse,
+                islem_miktar,
+                islem_fiyat,
+                toplam_tutar,
+            )
             st.success(
-                f"✅ {islem_hisse} için {islem_miktar} adet alış"
-                " gerçekleştirildi!"
+                f"✅ {islem_hisse} alış emri gerçekleştirildi ve buluta"
+                " işlendi!"
             )
             st.rerun()
           else:
@@ -743,16 +806,24 @@ with tab_portfoy:
           if mevcut_lot >= islem_miktar:
             aktif_profil["nakit"] += toplam_tutar
             aktif_profil["portfoy_hareketleri"].append({
-                "Zaman": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "Zaman": zaman_str,
                 "Hisse": islem_hisse,
                 "Tip": "SATIŞ",
                 "Miktar": islem_miktar,
                 "Fiyat": islem_fiyat,
                 "Tutar": toplam_tutar,
             })
+            buluta_islem_gonder(
+                secilen_kullanici,
+                "SATIŞ",
+                islem_hisse,
+                islem_miktar,
+                islem_fiyat,
+                toplam_tutar,
+            )
             st.success(
-                f"✅ {islem_hisse} için {islem_miktar} adet satış"
-                " gerçekleştirildi!"
+                f"✅ {islem_hisse} satış emri gerçekleştirildi ve buluta"
+                " işlendi!"
             )
             st.rerun()
           else:
@@ -866,3 +937,10 @@ with tab_liderlik:
         use_container_width=True,
         hide_index=True,
     )
+
+# --- KURUMSAL FOOTER (ALT BİLGİ) ---
+st.markdown(
+    "<div class='footer-text'>Powered by DY &nbsp;|&nbsp; Kişisel kullanım"
+    " içindir.</div>",
+    unsafe_allow_html=True,
+)
