@@ -8,6 +8,9 @@ def google_sheets_baglan():
     # Şifreyi Streamlit'in gizli kasasından okuyoruz
     creds_dict = json.loads(st.secrets["google_credentials"])
     
+    # SİHİRLİ DOKUNUŞ: Şifrenin içindeki \n (düz yazı) karakterlerini gerçek alt satıra çeviriyoruz
+    creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+    
     # gspread'in kendi modern altyapısını kullanıyoruz
     client = gspread.service_account_from_dict(creds_dict)
     
