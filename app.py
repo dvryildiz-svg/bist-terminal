@@ -1,23 +1,26 @@
 import json
 import streamlit as st
 import gspread
-import re
 from datetime import datetime
 
 # --- GOOGLE SHEETS BAĞLANTISI ---
 def google_sheets_baglan():
     creds_dict = json.loads(st.secrets["google_credentials"])
     
-    # --- CERRAH FİLTRESİ (REGEX) ---
+    # --- KABA KUVVET FİLTRESİ ---
     pk = creds_dict.get("private_key", "")
     pk = pk.replace("\\n", "\n")
     
-    # Şifrenin başında/sonunda ne kadar çöp (nokta, boşluk vb.) olursa olsun 
-    # sadece BEGIN ve END arasındaki o asıl metni cımbızla çekip alıyoruz.
-    match = re.search(r"-----BEGIN PRIVATE KEY-----.*?-----END PRIVATE KEY-----", pk, re.DOTALL)
-    if match:
-        creds_dict["private_key"] = match.group(0)
+    # İlk tireyi (-) bul ve ondan önceki her şeyi (nokta, boşluk vb.) kesip at.
+    if "-" in pk:
+        ilk_tire = pk.find("-")
+        pk = pk[ilk_tire:]
+        
+    creds_dict["private_key"] = pk
     # ----------------------------------
+    
+    # Hata durumunda düşmanı görebilmek için şifrenin ilk 15 karakterini kaydediyoruz
+    st.session_state["debug_pk"] = pk[:15] 
     
     client = gspread.service_account_from_dict(creds_dict)
     dosya = client.open("BIST_Trader_Arsivi")
@@ -51,6 +54,9 @@ if st.button("İşlemi Kaydet"):
             st.success(f"Başarılı! {hisse} işlemi Portfoy_Arsivi sekmesine kaydedildi.")
             
         except Exception as e:
-            st.error(f"Hata Detayı: {type(e).__name__} - {str(e)}")
+            # Hata verirse radarı ekrana basıyoruz
+            debug_bilgisi = st.session_state.get("debug_pk", "Okunamadı")
+            st.error(f"Hata: {str(e)}")
+            st.warning(f"RADAR (Sistemin gördüğü şifre başlangıcı): {repr(debug_bilgisi)}")
     else:
         st.warning("Lütfen hisse sembolü, lot ve fiyat bilgilerini eksiksiz girin.")
