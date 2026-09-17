@@ -46,7 +46,5 @@ if st.button("İşlemi Kaydet"):
             
             st.success(f"Başarılı! {hisse} işlemi Portfoy_Arsivi sekmesine kaydedildi.")
         
-        except Exception as e:
-            st.error(f"Bağlantı veya Kayıt Hatası: {e}")
-    else:
-        st.warning("Lütfen hisse sembolü, lot ve fiyat bilgilerini eksiksiz girin.")
+except Exception as e:
+            st.error(f"Hata Detayı: {type(e).__name__} - {str(e)}")
