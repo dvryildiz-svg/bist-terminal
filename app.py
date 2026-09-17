@@ -1,4 +1,3 @@
-import base64
 import json
 import tempfile
 import os
@@ -7,16 +6,17 @@ import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime
 
-# --- KESİN ÇÖZÜM: GÜVENLİ BASE64 ÇÖZÜCÜ MOTOR ---
+# --- GOOGLE SHEETS BAĞLANTISI (SECRETS KASASI GÜVENLİ) ---
 def google_sheets_baglan():
-    b64_encoded_key = st.secrets["b64_key"]
+    # Secrets kasasından JSON metnini alıyoruz
+    raw_json = st.secrets["GOOGLE_CREDENTIALS_JSON"]
+    creds_dict = json.loads(raw_json)
     
-    # Base64 baytlarını çözüyoruz ve utf-8 decode ederken hatalı baytları atlayarak güvenli hale getiriyoruz
-    json_bytes = base64.b64decode(b64_encoded_key)
-    json_str = json_bytes.decode('utf-8', errors='ignore')
-    creds_dict = json.loads(json_str)
+    # Python düzeyinde kaçış karakterlerini gerçek alt satırlara dönüştürüyoruz
+    if "private_key" in creds_dict:
+        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
 
-    # Geçici dosyaya yazarak gspread / google-auth kütüphanesine sunuyoruz
+    # Geçici dosya yöntemiyle tüm PEM/Padding hatalarını %100 önlüyoruz
     with tempfile.NamedTemporaryFile(mode='w', delete=False, encoding='utf-8', suffix='.json') as f:
         json.dump(creds_dict, f)
         temp_filename = f.name
