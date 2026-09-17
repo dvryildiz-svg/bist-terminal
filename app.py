@@ -8,70 +8,45 @@ import yfinance as yf
 
 # Sayfa Konfigürasyonu
 st.set_page_config(
-    page_title="DY Terminal | BİST & Varlık Yönetimi", page_icon="🦅", layout="wide"
+    page_title="DY Terminal | BİST & Varlık Yönetimi", page_icon="🦁", layout="wide"
 )
 
-# --- PROFESYONEL SİYAH / KOYU TEMA & NET STİL CSS ---
+# --- KLASİK FERAH KURUMSAL STİL DÜZENLEMELERİ ---
 st.markdown("""
     <style>
-    /* Ana Sayfa ve Arka Plan (Siyaha Yakın Kurumsal Fon) */
-    .stApp {
-        background-color: #090D16;
-        color: #F8FAFC;
-    }
-    
-    /* Yan Menü (Sidebar) Arka Planı */
-    [data-testid="stSidebar"] {
-        background-color: #0F172A;
-    }
-
-    /* Başlıklar ve Yazı Renkleri (Kesinlikle net ve parlak) */
-    h1, h2, h3, h4, h5, h6, span, p, label, .stMarkdown {
-        color: #F8FAFC !important;
-    }
-
     .main-header {
-        font-size: 30px;
-        font-weight: 800;
-        color: #FFFFFF !important;
-        letter-spacing: 0.5px;
+        font-size: 28px;
+        font-weight: 700;
+        color: #0F172A;
+        margin-bottom: 0px;
     }
     .sub-header {
         font-size: 14px;
-        color: #94A3B8 !important;
+        color: #64748B;
         margin-bottom: 20px;
     }
     .footer-text {
         text-align: center;
         font-size: 12px;
-        color: #64748B;
-        padding: 40px 0px 20px 0px;
-        border-top: 1px solid #1E293B;
-        margin-top: 60px;
-    }
-    
-    /* Metrik Kutuları Özel Tasarımı */
-    [data-testid="stMetric"] {
-        background-color: #111827;
-        border: 1px solid #1F2937;
-        padding: 15px;
-        border-radius: 10px;
+        color: #94A3B8;
+        padding: 30px 0px 10px 0px;
+        border-top: 1px solid #E2E8F0;
+        margin-top: 50px;
     }
     </style>
 """, unsafe_allow_html=True)
 
-# --- LOGO VE BAŞLIK ALANI (Sayfanın En Üstü) ---
-col_logo, col_title = st.columns([1, 12])
+# --- ASLAN LOGOSU VE BAŞLIK ALANI ---
+col_logo, col_title = st.columns([1, 10])
 with col_logo:
   st.markdown(
-      "<div style='font-size: 40px; text-align: center; padding-top: "
-      "5px;'>🦅</div>",
+      "<h1 style='text-align: center; margin: 0;'>🦁</h1>",
       unsafe_allow_html=True,
   )
 with col_title:
   st.markdown(
-      "<div class='main-header'>DY TERMINAL — Profesyonel Fon & Varlık Yönetim"
-      " Platformu</div>",
+      "<div class='main-header'>DY Terminal — Profesyonel Fon & Varlık"
+      " Yönetim Platformu</div>",
       unsafe_allow_html=True,
   )
   st.markdown(
