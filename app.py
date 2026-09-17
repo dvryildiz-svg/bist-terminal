@@ -7,7 +7,7 @@ import streamlit as st
 import yfinance as yf
 
 st.set_page_config(
-    page_title="BİST & Varlık Yönetim Terminali",
+    page_title="BİST & Çoklu Varlık Profesyonel Fon Yönetim Terminali",
     page_icon="🦁",
     layout="wide",
 )
@@ -675,6 +675,18 @@ if "kullanicilar" not in st.session_state:
           "gunluk_gecmis": [],
           "son_hesap_tarihi": str(datetime.date.today()),
       },
+      "Orhan": {
+          "nakit": 1000000.0,
+          "portfoy_hareketleri": [],
+          "gunluk_gecmis": [],
+          "son_hesap_tarihi": str(datetime.date.today()),
+      },
+      "Ali Yiğit": {
+          "nakit": 1000000.0,
+          "portfoy_hareketleri": [],
+          "gunluk_gecmis": [],
+          "son_hesap_tarihi": str(datetime.date.today()),
+      },
   }
 
 # Kenar Çubuğu: Kullanıcı Seçimi / Yönetimi
@@ -1016,7 +1028,9 @@ with tab_portfoy:
           with col_rad2:
             st.markdown("### 🔴 Riskli / SAT Pozisyonlar")
             aktif_hisseler_listesi = [
-                k for k, v in portfoy_durumu.items() if v["lot"] > 0 and k not in alternatif_varliklar
+                k
+                for k, v in portfoy_durumu.items()
+                if v["lot"] > 0 and k not in alternatif_varliklar
             ]
             riskli_varliklar = []
             for ah in aktif_hisseler_listesi:
@@ -1127,7 +1141,7 @@ with tab_portfoy:
 
             st.success(
                 f"✅ {islem_hisse} için {islem_miktar} adet alış"
-                " gerçekleştirildi ve E-Tabloya iletildi!"
+                f" gerçekleştirildi ({secilen_kullanici}) ve E-Tabloya iletildi!"
             )
             st.rerun()
           else:
@@ -1161,7 +1175,7 @@ with tab_portfoy:
 
             st.success(
                 f"✅ {islem_hisse} için {islem_miktar} adet satış"
-                " gerçekleştirildi ve E-Tabloya iletildi!"
+                f" gerçekleştirildi ({secilen_kullanici}) ve E-Tabloya iletildi!"
             )
             st.rerun()
           else:
