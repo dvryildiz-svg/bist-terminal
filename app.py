@@ -19,8 +19,8 @@ st.markdown(
     " Çoklu Kullanıcı Liderlik Matrisi ve Hızlı İşlem Paneli."
 )
 
-# YENİ VE ÇİFT YÖNLÜ (Okuma/Yazma) ÇALIŞAN WEBHOOK URL'NİZ
-WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxBmaJ2d5RNToPfe6hmUmTBEpnR8vVIQ1IIOR0oc-DaoKK475-9RWz_8mRpp4Gzh5aV5Q/exec"
+# GARANTİLİ (İsme Göre Bulan) YENİ WEBHOOK URL'NİZ
+WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbz8Z6yiVGpGTmg2k3I3htQrkxVrKFpZFNeP7qjxxDS8mzrQ1B6LrTJ67q4Dokkh667LnQ/exec"
 
 # BİST TÜM ve Ana Pazar Hisselerinin Tam Kapsamlı Listesi
 bist_hisseler = sorted([
@@ -289,7 +289,6 @@ def arsekten_verileri_yukle():
       veri = response.json()
       if isinstance(veri, list) and len(veri) > 0:
         for islem in veri:
-          # Tablonun formatına göre sütun isimlerini webhook'tan alıyoruz
           kullanici = islem.get("kullanici", "Devrim")
           if kullanici not in varsayilan_kullanicilar:
             varsayilan_kullanicilar[kullanici] = {
@@ -299,7 +298,6 @@ def arsekten_verileri_yukle():
                 "son_hesap_tarihi": str(datetime.date.today()),
             }
 
-          # Hata fırlatmaması için değerleri güvenli formata çeviriyoruz
           tutar_raw = islem.get("toplam_tutar", 0)
           tutar = float(str(tutar_raw).replace(",", ".")) if tutar_raw else 0.0
           
@@ -325,7 +323,6 @@ def arsekten_verileri_yukle():
           elif islem_turu == "SATIŞ":
             varsayilan_kullanicilar[kullanici]["nakit"] += tutar
   except Exception as e:
-    # Hata durumunda uygulamanın çökmemesi için
     print("Veri yükleme hatası:", e)
     pass
   return varsayilan_kullanicilar
