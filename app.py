@@ -447,12 +447,11 @@ with tab_matris:
     toplam = len(hedef_liste)
     progress_bar = st.progress(0)
     
-    # Tekil hisse tarama fonksiyonu (Haber taraması DEVRE DIŞI bırakıldı)
+    # Tekil hisse tarama fonksiyonu (Haber taraması bulk taramada hız için kapalı)
     def tekil_tara(h_kodu):
         try:
             df_m = veri_cek_ve_hazirla(h_kodu)
             if df_m is not None and not df_m.empty and len(df_m) > 30:
-                # Haber ve KAP listelerini boş array [] olarak gönderiyoruz ki ağ isteği yapıp beklemesin
                 k_karar, k_puan, _, k_fiyat, k_rsi, _, _, k_alim, k_satim = akilli_analiz_hesapla(df_m, [], [])
                 return {
                     "Hisse": h_kodu,
@@ -468,7 +467,7 @@ with tab_matris:
         return None
 
     tamamlanan = 0
-    # ThreadPoolExecutor ile 15 işlemi aynı anda asenkron yapıyoruz (Turbo Hız)
+    # ThreadPoolExecutor ile çoklu asenkron tarama
     with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
         gelecek_islemler = {executor.submit(tekil_tara, h_kodu): h_kodu for h_kodu in hedef_liste}
         for future in concurrent.futures.as_completed(gelecek_islemler):
@@ -481,21 +480,9 @@ with tab_matris:
     if matris_verileri:
       df_sonuc = pd.DataFrame(matris_verileri)
 
-      al_grubu = (
-          df_sonuc[df_sonuc["HamKarar"] == "AL"]
-          .sort_values(by="Puan", ascending=False)
-          .reset_index(drop=True)
-      )
-      sat_grubu = (
-          df_sonuc[df_sonuc["HamKarar"] == "SAT"]
-          .sort_values(by="Puan", ascending=True)
-          .reset_index(drop=True)
-      )
-      tut_grubu = (
-          df_sonuc[df_sonuc["HamKarar"] == "TUT"]
-          .sort_values(by="Puan", ascending=False)
-          .reset_index(drop=True)
-      )
+      al_grubu = df_sonuc[df_sonuc["HamKarar"] == "AL"].sort_values(by="Puan", ascending=False).reset_index(drop=True)
+      sat_grubu = df_sonuc[df_sonuc["HamKarar"] == "SAT"].sort_values(by="Puan", ascending=True).reset_index(drop=True)
+      tut_grubu = df_sonuc[df_sonuc["HamKarar"] == "TUT"].sort_values(by="Puan", ascending=False).reset_index(drop=True)
 
       final_liste = []
       for idx, row in al_grubu.iterrows():
@@ -509,158 +496,94 @@ with tab_matris:
         final_liste.append(row)
 
       df_final = pd.DataFrame(final_liste)
-      df_final = df_final[[
-          "Sinyal Derecesi",
-          "Hisse",
-          "Son Fiyat (TL)",
-          "RSI",
-          "İdeal Alım",
-          "İdeal Satış",
-          "Puan",
-      ]]
-
+      df_final = df_final[["Sinyal Derecesi", "Hisse", "Son Fiyat (TL)", "RSI", "İdeal Alım", "İdeal Satış", "Puan"]]
+      
+      # DÜZELTME: Tarama sonucunu hafızaya kaydediyoruz (Hızlı İşlem butonu çalışması için şart)
+      st.session_state.tarama_sonucu = df_final
       st.success("Tarama ve Dereceli Sıralama Tamamlandı!")
-      st.dataframe(
-          df_final.style.format({
-              "Son Fiyat (TL)": "{:.2f} TL",
-              "RSI": "{:.1f}",
-              "İdeal Alım": "{:.2f} TL",
-              "İdeal Satış": "{:.2f} TL",
-          }),
-          use_container_width=True,
-          hide_index=True,
-      )
-
-      # --- HIZLI İŞLEM (AL/SAT) PANELİ ---
-      st.markdown("---")
-      st.subheader(
-          f"⚡ Hızlı İşlem Paneli ({secilen_kullanici} - Aktif Bakiye:"
-          f" {aktif_profil['nakit']:,.2f} TL)"
-      )
-      st.markdown(
-          "Yukarıdaki matriste gördüğün hisselerden dilediğini seçerek bu"
-          " ekrandan çıkmadan anında işlem yapabilirsin."
-      )
-
-      with st.form("hizli_islem_formu"):
-        col_h1, col_h2, col_h3, col_h4 = st.columns(4)
-        with col_h1:
-          hizli_hisse = st.selectbox(
-              "Hisse Seçin", df_final["Hisse"].tolist()
-          )
-        with col_h2:
-          hizli_tip = st.selectbox("İşlem Tipi", ["ALIŞ", "SATIŞ"])
-        with col_h3:
-          hizli_lot = st.number_input(
-              "Lot Miktarı", min_value=1, value=1000, step=100
-          )
-        with col_h4:
-          eslesen_satir = df_final[df_final["Hisse"] == hizli_hisse]
-          varsayilan_fiyat = (
-              float(eslesen_satir["Son Fiyat (TL)"].values[0])
-              if not eslesen_satir.empty
-              else 10.0
-          )
-          hizli_fiyat = st.number_input(
-              "Birim Fiyat (TL)",
-              min_value=0.01,
-              value=varsayilan_fiyat,
-              step=0.05,
-              format="%.2f",
-          )
-
-        hizli_onay = st.form_submit_button(
-            "🚀 Hızlı Emri Gerçekleştir ve Kaydet"
-        )
-
-        if hizli_onay:
-          hizli_toplam_tutar = hizli_lot * hizli_fiyat
-          # Saat bilgisini Türkiye saat dilimi ile alıyoruz
-          zaman_str = datetime.datetime.now(TZ_TR).strftime("%d.%m.%Y %H:%M:%S")
-
-          portfoy_durumu_hizli = {}
-          for isl in aktif_profil["portfoy_hareketleri"]:
-            hh = isl["Hisse"]
-            if hh not in portfoy_durumu_hizli:
-              portfoy_durumu_hizli[hh] = 0
-            if isl["Tip"] == "ALIŞ":
-              portfoy_durumu_hizli[hh] += isl["Miktar"]
-            elif isl["Tip"] == "SATIŞ":
-              portfoy_durumu_hizli[hh] -= isl["Miktar"]
-
-          if hizli_tip == "ALIŞ":
-            if aktif_profil["nakit"] >= hizli_toplam_tutar:
-              aktif_profil["nakit"] -= hizli_toplam_tutar
-              aktif_profil["portfoy_hareketleri"].append({
-                  "Zaman": zaman_str,
-                  "Hisse": hizli_hisse,
-                  "Tip": "ALIŞ",
-                  "Miktar": hizli_lot,
-                  "Fiyat": hizli_fiyat,
-                  "Tutar": hizli_toplam_tutar,
-              })
-
-              try:
-                payload = {
-                    "zaman": zaman_str,
-                    "kullanici": secilen_kullanici,
-                    "hisse": hizli_hisse,
-                    "islem_turu": "ALIŞ",
-                    "lot": hizli_lot,
-                    "fiyat": hizli_fiyat,
-                    "toplam_tutar": hizli_toplam_tutar,
-                }
-                requests.post(WEBHOOK_URL, json=payload, timeout=5)
-              except:
-                pass
-
-              st.success(
-                  f"✅ {hizli_hisse} için {hizli_lot} lot alış"
-                  f" gerçekleştirildi ({secilen_kullanici})!"
-              )
-              st.rerun()
-            else:
-              st.error("❌ Yetersiz Nakit Bakiye!")
-
-          elif hizli_tip == "SATIŞ":
-            sahip_olunan_lot = portfoy_durumu_hizli.get(hizli_hisse, 0)
-            if sahip_olunan_lot >= hizli_lot:
-              aktif_profil["nakit"] += hizli_toplam_tutar
-              aktif_profil["portfoy_hareketleri"].append({
-                  "Zaman": zaman_str,
-                  "Hisse": hizli_hisse,
-                  "Tip": "SATIŞ",
-                  "Miktar": hizli_lot,
-                  "Fiyat": hizli_fiyat,
-                  "Tutar": hizli_toplam_tutar,
-              })
-
-              try:
-                payload = {
-                    "zaman": zaman_str,
-                    "kullanici": secilen_kullanici,
-                    "hisse": hizli_hisse,
-                    "islem_turu": "SATIŞ",
-                    "lot": hizli_lot,
-                    "fiyat": hizli_fiyat,
-                    "toplam_tutar": hizli_toplam_tutar,
-                }
-                requests.post(WEBHOOK_URL, json=payload, timeout=5)
-              except:
-                pass
-
-              st.success(
-                  f"✅ {hizli_hisse} için {hizli_lot} lot satış"
-                  f" gerçekleştirildi ({secilen_kullanici})!"
-              )
-              st.rerun()
-            else:
-              st.error(
-                  f"❌ Portföyünüzde yeterli {hizli_hisse} yok! (Mevcut:"
-                  f" {sahip_olunan_lot} lot)"
-              )
     else:
       st.warning("Tarama sırasında yeterli veri alınamadı.")
+
+  # EĞER HAFIZADA TARAMA SONUCU VARSA TABLOYU VE HIZLI İŞLEM PANELİNİ GÖSTER
+  if "tarama_sonucu" in st.session_state:
+    df_gosterim = st.session_state.tarama_sonucu
+    st.dataframe(
+        df_gosterim.style.format({
+            "Son Fiyat (TL)": "{:.2f} TL",
+            "RSI": "{:.1f}",
+            "İdeal Alım": "{:.2f} TL",
+            "İdeal Satış": "{:.2f} TL",
+        }),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    # --- HIZLI İŞLEM (AL/SAT) PANELİ ---
+    st.markdown("---")
+    st.subheader(f"⚡ Hızlı İşlem Paneli ({secilen_kullanici} - Aktif Bakiye: {aktif_profil['nakit']:,.2f} TL)")
+    st.markdown("Yukarıdaki matriste gördüğün hisselerden dilediğini seçerek bu ekrandan çıkmadan anında işlem yapabilirsin.")
+
+    with st.form("hizli_islem_formu"):
+      col_h1, col_h2, col_h3, col_h4 = st.columns(4)
+      with col_h1:
+        hizli_hisse = st.selectbox("Hisse Seçin", df_gosterim["Hisse"].tolist())
+      with col_h2:
+        hizli_tip = st.selectbox("İşlem Tipi", ["ALIŞ", "SATIŞ"])
+      with col_h3:
+        hizli_lot = st.number_input("Lot Miktarı", min_value=1, value=1000, step=100)
+      with col_h4:
+        eslesen_satir = df_gosterim[df_gosterim["Hisse"] == hizli_hisse]
+        varsayilan_fiyat = float(eslesen_satir["Son Fiyat (TL)"].values[0]) if not eslesen_satir.empty else 10.0
+        hizli_fiyat = st.number_input("Birim Fiyat (TL)", min_value=0.01, value=varsayilan_fiyat, step=0.05, format="%.2f")
+
+      hizli_onay = st.form_submit_button("🚀 Hızlı Emri Gerçekleştir ve Kaydet")
+
+      if hizli_onay:
+        hizli_toplam_tutar = hizli_lot * hizli_fiyat
+        zaman_str = datetime.datetime.now(TZ_TR).strftime("%d.%m.%Y %H:%M:%S")
+
+        portfoy_durumu_hizli = {}
+        for isl in aktif_profil["portfoy_hareketleri"]:
+          hh = isl["Hisse"]
+          if hh not in portfoy_durumu_hizli:
+            portfoy_durumu_hizli[hh] = 0
+          if isl["Tip"] == "ALIŞ":
+            portfoy_durumu_hizli[hh] += isl["Miktar"]
+          elif isl["Tip"] == "SATIŞ":
+            portfoy_durumu_hizli[hh] -= isl["Miktar"]
+
+        if hizli_tip == "ALIŞ":
+          if aktif_profil["nakit"] >= hizli_toplam_tutar:
+            aktif_profil["nakit"] -= hizli_toplam_tutar
+            aktif_profil["portfoy_hareketleri"].append({
+                "Zaman": zaman_str, "Hisse": hizli_hisse, "Tip": "ALIŞ",
+                "Miktar": hizli_lot, "Fiyat": hizli_fiyat, "Tutar": hizli_toplam_tutar,
+            })
+            try:
+              requests.post(WEBHOOK_URL, json={"zaman": zaman_str, "kullanici": secilen_kullanici, "hisse": hizli_hisse, "islem_turu": "ALIŞ", "lot": hizli_lot, "fiyat": hizli_fiyat, "toplam_tutar": hizli_toplam_tutar}, timeout=5)
+            except:
+              pass
+            st.success(f"✅ {hizli_hisse} için {hizli_lot} lot alış gerçekleştirildi ({secilen_kullanici})!")
+            st.rerun()
+          else:
+            st.error("❌ Yetersiz Nakit Bakiye!")
+
+        elif hizli_tip == "SATIŞ":
+          sahip_olunan_lot = portfoy_durumu_hizli.get(hizli_hisse, 0)
+          if sahip_olunan_lot >= hizli_lot:
+            aktif_profil["nakit"] += hizli_toplam_tutar
+            aktif_profil["portfoy_hareketleri"].append({
+                "Zaman": zaman_str, "Hisse": hizli_hisse, "Tip": "SATIŞ",
+                "Miktar": hizli_lot, "Fiyat": hizli_fiyat, "Tutar": hizli_toplam_tutar,
+            })
+            try:
+              requests.post(WEBHOOK_URL, json={"zaman": zaman_str, "kullanici": secilen_kullanici, "hisse": hizli_hisse, "islem_turu": "SATIŞ", "lot": hizli_lot, "fiyat": hizli_fiyat, "toplam_tutar": hizli_toplam_tutar}, timeout=5)
+            except:
+              pass
+            st.success(f"✅ {hizli_hisse} için {hizli_lot} lot satış gerçekleştirildi ({secilen_kullanici})!")
+            st.rerun()
+          else:
+            st.error(f"❌ Portföyünüzde yeterli {hizli_hisse} yok! (Mevcut: {sahip_olunan_lot} lot)")
 
 with tab_portfoy:
   st.subheader(
@@ -900,7 +823,6 @@ with tab_portfoy:
       islem_onay = st.form_submit_button("Emri Gerçekleştir ve Tabloya Kaydet")
       if islem_onay:
         toplam_tutar = islem_miktar * islem_fiyat
-        # Saat bilgisini Türkiye saat dilimi ile alıyoruz
         zaman_str = datetime.datetime.now(TZ_TR).strftime("%d.%m.%Y %H:%M:%S")
 
         if islem_tipi == "ALIŞ":
