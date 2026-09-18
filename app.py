@@ -1,3 +1,4 @@
+import concurrent.futures
 import datetime
 from feedparser import parse
 from isyatirimhisse import fetch_stock_data
@@ -430,40 +431,52 @@ with tab_matris:
       " kağıtlarına **AL 1, AL 2...**, en zayıf satım kağıtlarına **SAT 1,"
       " SAT 2...** derecesi verilir."
   )
+  
+  # Yeni Hızlandırıcı Kapsam Seçimi
+  tarama_kapsami = st.radio(
+      "Tarama Hızı & Kapsamı:",
+      ["Sadece Popüler/İlk 50 Hisse (Çok Hızlı ⚡)", "Tüm BİST Hisseleri (Yavaş 🐢)"],
+      horizontal=True
+  )
 
-  if st.button("🚀 Tüm Piyasayı Tara ve Sıralı Matrisi Oluştur"):
+  if st.button("🚀 Piyasayı Tara ve Sıralı Matrisi Oluştur"):
     matris_verileri = []
+    
+    # Hız seçeneğine göre hedef listeyi belirle
+    hedef_liste = bist_hisseler[:50] if "50" in tarama_kapsami else bist_hisseler
+    toplam = len(hedef_liste)
     progress_bar = st.progress(0)
-    toplam = len(bist_hisseler)
-
-    for i, h_kodu in enumerate(bist_hisseler):
-      df_m = veri_cek_ve_hazirla(h_kodu)
-      _, kap_m = haberleri_ve_kap_getir(h_kodu)
-      if df_m is not None and not df_m.empty and len(df_m) > 30:
+    
+    # Tekil hisse tarama fonksiyonu (Haber taraması DEVRE DIŞI bırakıldı)
+    def tekil_tara(h_kodu):
         try:
-          (
-              k_karar,
-              k_puan,
-              _,
-              k_fiyat,
-              k_rsi,
-              _,
-              _,
-              k_alim,
-              k_satim,
-          ) = akilli_analiz_hesapla(df_m, kap_m, [])
-          matris_verileri.append({
-              "Hisse": h_kodu,
-              "Puan": k_puan,
-              "HamKarar": k_karar,
-              "Son Fiyat (TL)": k_fiyat,
-              "RSI": k_rsi,
-              "İdeal Alım": k_alim,
-              "İdeal Satış": k_satim,
-          })
+            df_m = veri_cek_ve_hazirla(h_kodu)
+            if df_m is not None and not df_m.empty and len(df_m) > 30:
+                # Haber ve KAP listelerini boş array [] olarak gönderiyoruz ki ağ isteği yapıp beklemesin
+                k_karar, k_puan, _, k_fiyat, k_rsi, _, _, k_alim, k_satim = akilli_analiz_hesapla(df_m, [], [])
+                return {
+                    "Hisse": h_kodu,
+                    "Puan": k_puan,
+                    "HamKarar": k_karar,
+                    "Son Fiyat (TL)": k_fiyat,
+                    "RSI": k_rsi,
+                    "İdeal Alım": k_alim,
+                    "İdeal Satış": k_satim,
+                }
         except:
-          pass
-      progress_bar.progress((i + 1) / toplam)
+            pass
+        return None
+
+    tamamlanan = 0
+    # ThreadPoolExecutor ile 15 işlemi aynı anda asenkron yapıyoruz (Turbo Hız)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
+        gelecek_islemler = {executor.submit(tekil_tara, h_kodu): h_kodu for h_kodu in hedef_liste}
+        for future in concurrent.futures.as_completed(gelecek_islemler):
+            sonuc = future.result()
+            if sonuc:
+                matris_verileri.append(sonuc)
+            tamamlanan += 1
+            progress_bar.progress(tamamlanan / toplam)
 
     if matris_verileri:
       df_sonuc = pd.DataFrame(matris_verileri)
