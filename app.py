@@ -19,8 +19,8 @@ st.markdown(
     " Çoklu Kullanıcı Liderlik Matrisi ve Hızlı İşlem Paneli."
 )
 
-# Yeni Bağımsız Google Apps Script Webhook URL'niz
-WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbyzqiS339aSI8y45-DOGXeKhBGPD1H7_N5jsoAwFDHcNRIP7KGLKGCxDQ8WAD_ghFdi9w/exec"
+# Orijinal ve Çalışan Google Apps Script Webhook URL'niz
+WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbwygErfqRELOrBeevAsoCjD2di0HTZqhM0tkCxjZQA3DQXHSxXoXlJohfDS1qMe57mhIQ/exec"
 
 # BİST TÜM ve Ana Pazar Hisselerinin Tam Kapsamlı Listesi
 bist_hisseler = sorted([
