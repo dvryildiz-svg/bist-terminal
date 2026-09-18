@@ -669,12 +669,6 @@ if "kullanicilar" not in st.session_state:
           "gunluk_gecmis": [],
           "son_hesap_tarihi": str(datetime.date.today()),
       },
-      "Ahmet": {
-          "nakit": 1000000.0,
-          "portfoy_hareketleri": [],
-          "gunluk_gecmis": [],
-          "son_hesap_tarihi": str(datetime.date.today()),
-      },
       "Orhan": {
           "nakit": 1000000.0,
           "portfoy_hareketleri": [],
@@ -1101,7 +1095,7 @@ with tab_portfoy:
           "Miktar / Lot", min_value=1, value=1000, step=100
       )
       islem_fiyat = st.number_input(
-          "Birim Fiyat (TL)",
+          "Birim Fiyat (TL) [Canlı]",
           min_value=0.01,
           value=float(otomatik_fiyat),
           step=0.05,
@@ -1227,8 +1221,9 @@ with tab_portfoy:
 with tab_liderlik:
   st.subheader("🏆 Yatırımcılar Liderlik & Performans Matrisi")
   st.markdown(
-      "Sistemdeki tüm kullanıcıların portföy değerleri, nakitleri ve toplam"
-      " kâr/zarar durumları karşılaştırmalı olarak aşağıda listelenmiştir."
+      "Sistemdeki tüm kullanıcıların başlangıç sermayeleri (1.000.000 TL), kalan"
+      " repo nakitleri ve canlı varlık değerleri karşılaştırmalı olarak"
+      " aşağıda listelenmiştir."
   )
 
   liderlik_verileri = []
@@ -1268,9 +1263,9 @@ with tab_liderlik:
     liderlik_verileri.append({
         "Trader": kullanici_adi,
         "Toplam Varlık (TL)": top_varlik,
-        "Nakit (TL)": prof["nakit"],
-        "Varlıklar (TL)": hisse_val,
-        "Kâr / Zarar (TL)": k_z_tl,
+        "Kalan Nakit (TL)": prof["nakit"],
+        "Varlıklar Değeri (TL)": hisse_val,
+        "Net Kâr / Zarar (TL)": k_z_tl,
         "Performans (%)": k_z_yuzde,
     })
 
@@ -1281,9 +1276,9 @@ with tab_liderlik:
     st.dataframe(
         df_lider.style.format({
             "Toplam Varlık (TL)": "{:,.2f} TL",
-            "Nakit (TL)": "{:,.2f} TL",
-            "Varlıklar (TL)": "{:,.2f} TL",
-            "Kâr / Zarar (TL)": "{:,.2f} TL",
+            "Kalan Nakit (TL)": "{:,.2f} TL",
+            "Varlıklar Değeri (TL)": "{:,.2f} TL",
+            "Net Kâr / Zarar (TL)": "{:,.2f} TL",
             "Performans (%)": "{:.2f}%",
         }),
         use_container_width=True,
