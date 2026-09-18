@@ -15,8 +15,8 @@ st.set_page_config(
 st.title("🦁 BİST & Çoklu Varlık Profesyonel Fon Yönetim Terminali")
 st.markdown(
     "Tüm BİST Hisseleri Evreni, Sıralı Sinyaller (AL1, SAT1...), Canlı Fiyat"
-    " Entegrasyonu, Günlük Nemalandırma (%0,12), Sanal Portföy Akıllı Radarı ve"
-    " Çoklu Kullanıcı Liderlik Matrisi (Google Sheets Kalıcı Arşiv Destekli)."
+    " Entegrasyonu, Günlük Nemalandırma (%0,12), Sanal Portföy Akıllı Radarı,"
+    " Çoklu Kullanıcı Liderlik Matrisi ve Hızlı İşlem Paneli."
 )
 
 # Google Apps Script Webhook URL'niz (Kayıt ve Okuma için)
@@ -683,7 +683,6 @@ def arsekten_verileri_yukle():
       },
   }
   try:
-    # Webhook GET isteğiyle arşivdeki tüm geçmiş işlemleri çekiyoruz
     response = requests.get(WEBHOOK_URL, timeout=5)
     if response.status_code == 200:
       veri = response.json()
@@ -710,7 +709,6 @@ def arsekten_verileri_yukle():
               "Tutar": tutar,
           })
 
-          # Nakit düşme / çıkma simülasyonu
           if islem_turu == "ALIŞ":
             varsayilan_kullanicilar[kullanici]["nakit"] -= tutar
           elif islem_turu == "SATIŞ":
@@ -720,7 +718,7 @@ def arsekten_verileri_yukle():
   return varsayilan_kullanicilar
 
 
-# Çoklu Kullanıcı Veritabanı (Google Sheets Arşivinden Otomatik Başlatılır)
+# Çoklu Kullanıcı Veritabanı
 if "kullanicilar" not in st.session_state:
   st.session_state.kullanicilar = arsekten_verileri_yukle()
 
@@ -905,6 +903,136 @@ with tab_matris:
           use_container_width=True,
           hide_index=True,
       )
+
+      # --- YENİ EKLENEN HIZLI İŞLEM (AL/SAT) PANELİ ---
+      st.markdown("---")
+      st.subheader(
+          f"⚡ Hızlı İşlem Paneli ({secilen_kullanici} - Aktif Bakiye:"
+          f" {aktif_profil['nakit']:,.2f} TL)"
+      )
+      st.markdown(
+          "Yukarıdaki matriste gördüğün hisselerden dilediğini seçerek bu"
+          " ekrandan çıkmadan anında işlem yapabilirsin."
+      )
+
+      with st.form("hizli_islem_formu"):
+        col_h1, col_h2, col_h3, col_h4 = st.columns(4)
+        with col_h1:
+          hizli_hisse = st.selectbox(
+              "Hisse Seçin", df_final["Hisse"].tolist()
+          )
+        with col_h2:
+          hizli_tip = st.selectbox("İşlem Tipi", ["ALIŞ", "SATIŞ"])
+        with col_h3:
+          hizli_lot = st.number_input(
+              "Lot Miktarı", min_value=1, value=1000, step=100
+          )
+        with col_h4:
+          # Seçilen hissenin tablodaki güncel fiyatını otomatik alıyoruz
+          eslesen_satir = df_final[df_final["Hisse"] == hizli_hisse]
+          varsayilan_fiyat = (
+              float(eslesen_satir["Son Fiyat (TL)"].values[0])
+              if not eslesen_satir.empty
+              else 10.0
+          )
+          hizli_fiyat = st.number_input(
+              "Birim Fiyat (TL)",
+              min_value=0.01,
+              value=varsayilan_fiyat,
+              step=0.05,
+              format="%.2f",
+          )
+
+        hizli_onay = st.form_submit_button(
+            "🚀 Hızlı Emri Gerçekleştir ve Kaydet"
+        )
+
+        if hizli_onay:
+          hizli_toplam_tutar = hizli_lot * hizli_fiyat
+          zaman_str = datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S")
+
+          # Portföydeki mevcut lot hesaplaması
+          portfoy_durumu_hizli = {}
+          for isl in aktif_profil["portfoy_hareketleri"]:
+            hh = isl["Hisse"]
+            if hh not in portfoy_durumu_hizli:
+              portfoy_durumu_hizli[hh] = 0
+            if isl["Tip"] == "ALIŞ":
+              portfoy_durumu_hizli[hh] += isl["Miktar"]
+            elif isl["Tip"] == "SATIŞ":
+              portfoy_durumu_hizli[hh] -= isl["Miktar"]
+
+          if hizli_tip == "ALIŞ":
+            if aktif_profil["nakit"] >= hizli_toplam_tutar:
+              aktif_profil["nakit"] -= hizli_toplam_tutar
+              aktif_profil["portfoy_hareketleri"].append({
+                  "Zaman": zaman_str,
+                  "Hisse": hizli_hisse,
+                  "Tip": "ALIŞ",
+                  "Miktar": hizli_lot,
+                  "Fiyat": hizli_fiyat,
+                  "Tutar": hizli_toplam_tutar,
+              })
+
+              try:
+                payload = {
+                    "zaman": zaman_str,
+                    "kullanici": secilen_kullanici,
+                    "hisse": hizli_hisse,
+                    "islem_turu": "ALIŞ",
+                    "lot": hizli_lot,
+                    "fiyat": hizli_fiyat,
+                    "toplam_tutar": hizli_toplam_tutar,
+                }
+                requests.post(WEBHOOK_URL, json=payload, timeout=5)
+              except:
+                pass
+
+              st.success(
+                  f"✅ {hizli_hisse} için {hizli_lot} lot alış"
+                  f" gerçekleştirildi ({secilen_kullanici})!"
+              )
+              st.rerun()
+            else:
+              st.error("❌ Yetersiz Nakit Bakiye!")
+
+          elif hizli_tip == "SATIŞ":
+            sahip_olunan_lot = portfoy_durumu_hizli.get(hizli_hisse, 0)
+            if sahip_olunan_lot >= hizli_lot:
+              aktif_profil["nakit"] += hizli_toplam_tutar
+              aktif_profil["portfoy_hareketleri"].append({
+                  "Zaman": zaman_str,
+                  "Hisse": hizli_hisse,
+                  "Tip": "SATIŞ",
+                  "Miktar": hizli_lot,
+                  "Fiyat": hizli_fiyat,
+                  "Tutar": hizli_toplam_tutar,
+              })
+
+              try:
+                payload = {
+                    "zaman": zaman_str,
+                    "kullanici": secilen_kullanici,
+                    "hisse": hizli_hisse,
+                    "islem_turu": "SATIŞ",
+                    "lot": hizli_lot,
+                    "fiyat": hizli_fiyat,
+                    "toplam_tutar": hizli_toplam_tutar,
+                }
+                requests.post(WEBHOOK_URL, json=payload, timeout=5)
+              except:
+                pass
+
+              st.success(
+                  f"✅ {hizli_hisse} için {hizli_lot} lot satış"
+                  f" gerçekleştirildi ({secilen_kullanici})!"
+              )
+              st.rerun()
+            else:
+              st.error(
+                  f"❌ Portföyünüzde yeterli {hizli_hisse} yok! (Mevcut:"
+                  f" {sahip_olunan_lot} lot)"
+              )
     else:
       st.warning("Tarama sırasında yeterli veri alınamadı.")
 
