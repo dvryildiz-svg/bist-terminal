@@ -19,10 +19,8 @@ st.markdown(
     " Çoklu Kullanıcı Liderlik Matrisi ve Hızlı İşlem Paneli."
 )
 
-# Google Apps Script Webhook URL'niz (Kayıt ve Okuma için)
-WEBHOOK_URL = (
-    "https://script.google.com/macros/s/AKfycbwmG2vAGJdW-8kDE3CpyBHNU8wptywkhrLW_HyLIYOm3l9yPH-O9hqNaAyYARdl5mbjeg/exec"
-)
+# Yeni Bağımsız Google Apps Script Webhook URL'niz
+WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbyzqiS339aSI8y45-DOGXeKhBGPD1H7_N5jsoAwFDHcNRIP7KGLKGCxDQ8WAD_ghFdi9w/exec"
 
 # BİST TÜM ve Ana Pazar Hisselerinin Tam Kapsamlı Listesi
 bist_hisseler = sorted([
@@ -904,7 +902,7 @@ with tab_matris:
           hide_index=True,
       )
 
-      # --- YENİ EKLENEN HIZLI İŞLEM (AL/SAT) PANELİ ---
+      # --- HIZLI İŞLEM (AL/SAT) PANELİ ---
       st.markdown("---")
       st.subheader(
           f"⚡ Hızlı İşlem Paneli ({secilen_kullanici} - Aktif Bakiye:"
@@ -928,7 +926,6 @@ with tab_matris:
               "Lot Miktarı", min_value=1, value=1000, step=100
           )
         with col_h4:
-          # Seçilen hissenin tablodaki güncel fiyatını otomatik alıyoruz
           eslesen_satir = df_final[df_final["Hisse"] == hizli_hisse]
           varsayilan_fiyat = (
               float(eslesen_satir["Son Fiyat (TL)"].values[0])
@@ -951,7 +948,6 @@ with tab_matris:
           hizli_toplam_tutar = hizli_lot * hizli_fiyat
           zaman_str = datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S")
 
-          # Portföydeki mevcut lot hesaplaması
           portfoy_durumu_hizli = {}
           for isl in aktif_profil["portfoy_hareketleri"]:
             hh = isl["Hisse"]
