@@ -288,10 +288,18 @@ def arsekten_verileri_yukle():
           "son_hesap_tarihi": str(datetime.datetime.now(TZ_TR).date()),
       },
   }
+  
   try:
-    response = requests.get(WEBHOOK_URL, timeout=10)
+    # Google E-Tablo gecikmelerini tolere etmek için timeout süresi 10'dan 30'a çıkarıldı.
+    response = requests.get(WEBHOOK_URL, timeout=30)
     if response.status_code == 200:
-      veri = response.json()
+      try:
+        veri = response.json()
+      except Exception as e:
+        # Eğer Apps Script ayarları hatalıysa Google bir giriş sayfası (HTML) gönderir ve JSON hatası verir.
+        st.error("⚠️ BİLGİ: Google E-Tablo JSON verisi göndermedi. Apps Script ayarlarında 'Execute as: ME' ve 'Who has access: ANYONE' olduğundan emin olun.")
+        return varsayilan_kullanicilar
+
       if isinstance(veri, list) and len(veri) > 0:
         for islem in veri:
           kullanici = islem.get("kullanici", "Devrim")
@@ -327,9 +335,11 @@ def arsekten_verileri_yukle():
             varsayilan_kullanicilar[kullanici]["nakit"] -= tutar
           elif islem_turu == "SATIŞ":
             varsayilan_kullanicilar[kullanici]["nakit"] += tutar
+  except requests.exceptions.Timeout:
+    st.error("⚠️ BAĞLANTI HATASI: Google E-Tablolar 30 saniye içinde yanıt vermedi (Timeout). Veriler geçici olarak yüklenemedi.")
   except Exception as e:
-    print("Veri yükleme hatası:", e)
-    pass
+    st.error(f"⚠️ Beklenmeyen Veri Çekme Hatası: {e}")
+    
   return varsayilan_kullanicilar
 
 
@@ -371,7 +381,7 @@ if aktif_profil["son_hesap_tarihi"] != bugun_str:
   aktif_profil["nakit"] += faiz_getirisi
   aktif_profil["son_hesap_tarihi"] = bugun_str
 
-# --- YENİ EKLENEN İMZA VE UYARI BÖLÜMÜ ---
+# --- İMZA VE UYARI BÖLÜMÜ ---
 st.sidebar.markdown("---")
 st.sidebar.caption("⚡ **Powered by Devrim YILDIZ**")
 st.sidebar.caption("ℹ️ *Bu uygulama sadece kişisel fon yönetimi ve takip içindir. Yatırım tavsiyesi içermez.*")
@@ -579,7 +589,7 @@ with tab_matris:
                 "Miktar": hizli_lot, "Fiyat": hizli_fiyat, "Tutar": hizli_toplam_tutar,
             })
             try:
-              requests.post(WEBHOOK_URL, json={"zaman": zaman_str, "kullanici": secilen_kullanici, "hisse": hizli_hisse, "islem_turu": "ALIŞ", "lot": hizli_lot, "fiyat": hizli_fiyat, "toplam_tutar": hizli_toplam_tutar}, timeout=5)
+              requests.post(WEBHOOK_URL, json={"zaman": zaman_str, "kullanici": secilen_kullanici, "hisse": hizli_hisse, "islem_turu": "ALIŞ", "lot": hizli_lot, "fiyat": hizli_fiyat, "toplam_tutar": hizli_toplam_tutar}, timeout=15)
             except:
               pass
             st.success(f"✅ {hizli_hisse} için {hizli_lot} lot alış gerçekleştirildi ({secilen_kullanici})!")
@@ -596,7 +606,7 @@ with tab_matris:
                 "Miktar": hizli_lot, "Fiyat": hizli_fiyat, "Tutar": hizli_toplam_tutar,
             })
             try:
-              requests.post(WEBHOOK_URL, json={"zaman": zaman_str, "kullanici": secilen_kullanici, "hisse": hizli_hisse, "islem_turu": "SATIŞ", "lot": hizli_lot, "fiyat": hizli_fiyat, "toplam_tutar": hizli_toplam_tutar}, timeout=5)
+              requests.post(WEBHOOK_URL, json={"zaman": zaman_str, "kullanici": secilen_kullanici, "hisse": hizli_hisse, "islem_turu": "SATIŞ", "lot": hizli_lot, "fiyat": hizli_fiyat, "toplam_tutar": hizli_toplam_tutar}, timeout=15)
             except:
               pass
             st.success(f"✅ {hizli_hisse} için {hizli_lot} lot satış gerçekleştirildi ({secilen_kullanici})!")
@@ -866,7 +876,7 @@ with tab_portfoy:
                   "fiyat": islem_fiyat,
                   "toplam_tutar": toplam_tutar,
               }
-              requests.post(WEBHOOK_URL, json=payload, timeout=5)
+              requests.post(WEBHOOK_URL, json=payload, timeout=15)
             except:
               pass
 
@@ -900,7 +910,7 @@ with tab_portfoy:
                   "fiyat": islem_fiyat,
                   "toplam_tutar": toplam_tutar,
               }
-              requests.post(WEBHOOK_URL, json=payload, timeout=5)
+              requests.post(WEBHOOK_URL, json=payload, timeout=15)
             except:
               pass
 
