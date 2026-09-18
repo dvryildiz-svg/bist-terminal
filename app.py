@@ -371,6 +371,10 @@ if aktif_profil["son_hesap_tarihi"] != bugun_str:
   aktif_profil["nakit"] += faiz_getirisi
   aktif_profil["son_hesap_tarihi"] = bugun_str
 
+# --- YENİ EKLENEN İMZA VE UYARI BÖLÜMÜ ---
+st.sidebar.markdown("---")
+st.sidebar.caption("⚡ **Powered by Devrim YILDIZ**")
+st.sidebar.caption("ℹ️ *Bu uygulama sadece kişisel fon yönetimi ve takip içindir. Yatırım tavsiyesi içermez.*")
 
 tab_tekli, tab_matris, tab_portfoy, tab_liderlik = st.tabs([
     "📊 Tekli Hisse & Derin Analiz",
@@ -422,7 +426,7 @@ with tab_tekli:
     st.subheader(f"{secilen_hisse} Fiyat Grafiği")
     st.line_chart(df.set_index("Tarih")[["Kapanis", "SMA50", "SMA200"]])
     
-    # --- YENİ EKLENEN HABERLER VE KAP BİLDİRİMLERİ BÖLÜMÜ ---
+    # --- HABERLER VE KAP BİLDİRİMLERİ BÖLÜMÜ ---
     st.markdown("---")
     st.subheader(f"📰 {secilen_hisse} Son Haberler & KAP Bildirimleri")
     col_haber, col_kap = st.columns(2)
