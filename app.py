@@ -6,6 +6,9 @@ import requests
 import streamlit as st
 import yfinance as yf
 
+# Türkiye Saat Dilimi (UTC+3) Sabiti
+TZ_TR = datetime.timezone(datetime.timedelta(hours=3))
+
 st.set_page_config(
     page_title="BİST & Çoklu Varlık Profesyonel Fon Yönetim Terminali",
     page_icon="🦁",
@@ -80,9 +83,10 @@ alternatif_varliklar = [
 ]
 tum_islem_varliklari = sorted(bist_hisseler) + alternatif_varliklar
 
-bitis_tarihi = datetime.datetime.now().strftime("%d-%m-%Y")
+# Zamanları Türkiye saatine göre alıyoruz
+bitis_tarihi = datetime.datetime.now(TZ_TR).strftime("%d-%m-%Y")
 baslangic_tarihi = (
-    datetime.datetime.now() - datetime.timedelta(days=365)
+    datetime.datetime.now(TZ_TR) - datetime.timedelta(days=365)
 ).strftime("%d-%m-%Y")
 
 
@@ -268,19 +272,19 @@ def arsekten_verileri_yukle():
           "nakit": 1000000.0,
           "portfoy_hareketleri": [],
           "gunluk_gecmis": [],
-          "son_hesap_tarihi": str(datetime.date.today()),
+          "son_hesap_tarihi": str(datetime.datetime.now(TZ_TR).date()),
       },
       "Orhan": {
           "nakit": 1000000.0,
           "portfoy_hareketleri": [],
           "gunluk_gecmis": [],
-          "son_hesap_tarihi": str(datetime.date.today()),
+          "son_hesap_tarihi": str(datetime.datetime.now(TZ_TR).date()),
       },
       "Ali Yiğit": {
           "nakit": 1000000.0,
           "portfoy_hareketleri": [],
           "gunluk_gecmis": [],
-          "son_hesap_tarihi": str(datetime.date.today()),
+          "son_hesap_tarihi": str(datetime.datetime.now(TZ_TR).date()),
       },
   }
   try:
@@ -295,7 +299,7 @@ def arsekten_verileri_yukle():
                 "nakit": 1000000.0,
                 "portfoy_hareketleri": [],
                 "gunluk_gecmis": [],
-                "son_hesap_tarihi": str(datetime.date.today()),
+                "son_hesap_tarihi": str(datetime.datetime.now(TZ_TR).date()),
             }
 
           tutar_raw = islem.get("toplam_tutar", 0)
@@ -350,7 +354,7 @@ with st.sidebar.form("yeni_profil_formu"):
             "nakit": 1000000.0,
             "portfoy_hareketleri": [],
             "gunluk_gecmis": [],
-            "son_hesap_tarihi": str(datetime.date.today()),
+            "son_hesap_tarihi": str(datetime.datetime.now(TZ_TR).date()),
         }
         st.success(f"Hoş geldin {temiz_ad}! 1M TL sermayeniz tanımlandı.")
         st.rerun()
@@ -359,8 +363,8 @@ with st.sidebar.form("yeni_profil_formu"):
 
 aktif_profil = st.session_state.kullanicilar[secilen_kullanici]
 
-# Günlük Nakit Nemalandırma Kontrolü (%0,12 repo faizi)
-bugun_str = str(datetime.date.today())
+# Günlük Nakit Nemalandırma Kontrolü (%0,12 repo faizi) - Türkiye Saati
+bugun_str = str(datetime.datetime.now(TZ_TR).date())
 if aktif_profil["son_hesap_tarihi"] != bugun_str:
   faiz_getirisi = aktif_profil["nakit"] * 0.0012
   aktif_profil["nakit"] += faiz_getirisi
@@ -558,7 +562,8 @@ with tab_matris:
 
         if hizli_onay:
           hizli_toplam_tutar = hizli_lot * hizli_fiyat
-          zaman_str = datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S")
+          # Saat bilgisini Türkiye saat dilimi ile alıyoruz
+          zaman_str = datetime.datetime.now(TZ_TR).strftime("%d.%m.%Y %H:%M:%S")
 
           portfoy_durumu_hizli = {}
           for isl in aktif_profil["portfoy_hareketleri"]:
@@ -722,7 +727,7 @@ with tab_portfoy:
   toplam_kar_zarar = toplam_toplam - 1000000.0
   toplam_kar_zarar_yuzde = (toplam_kar_zarar / 1000000.0) * 100
 
-  bugun_tarih = str(datetime.date.today())
+  bugun_tarih = str(datetime.datetime.now(TZ_TR).date())
   mevcut_gunluk = aktif_profil["gunluk_gecmis"]
   if not mevcut_gunluk or mevcut_gunluk[-1]["Tarih"] != bugun_tarih:
     mevcut_gunluk.append({
@@ -882,7 +887,8 @@ with tab_portfoy:
       islem_onay = st.form_submit_button("Emri Gerçekleştir ve Tabloya Kaydet")
       if islem_onay:
         toplam_tutar = islem_miktar * islem_fiyat
-        zaman_str = datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S")
+        # Saat bilgisini Türkiye saat dilimi ile alıyoruz
+        zaman_str = datetime.datetime.now(TZ_TR).strftime("%d.%m.%Y %H:%M:%S")
 
         if islem_tipi == "ALIŞ":
           if aktif_profil["nakit"] >= toplam_tutar:
@@ -995,7 +1001,7 @@ with tab_portfoy:
             "nakit": 1000000.0,
             "portfoy_hareketleri": [],
             "gunluk_gecmis": [],
-            "son_hesap_tarihi": str(datetime.date.today()),
+            "son_hesap_tarihi": str(datetime.datetime.now(TZ_TR).date()),
         }
     }
     st.rerun()
