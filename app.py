@@ -421,6 +421,27 @@ with tab_tekli:
 
     st.subheader(f"{secilen_hisse} Fiyat Grafiği")
     st.line_chart(df.set_index("Tarih")[["Kapanis", "SMA50", "SMA200"]])
+    
+    # --- YENİ EKLENEN HABERLER VE KAP BİLDİRİMLERİ BÖLÜMÜ ---
+    st.markdown("---")
+    st.subheader(f"📰 {secilen_hisse} Son Haberler & KAP Bildirimleri")
+    col_haber, col_kap = st.columns(2)
+    
+    with col_haber:
+      st.markdown("**Son Haberler**")
+      if haberler:
+        for h in haberler:
+          st.markdown(f"- [{h['baslik']}]({h['link']})")
+      else:
+        st.info("Yakın zamanda eşleşen haber bulunamadı.")
+        
+    with col_kap:
+      st.markdown("**Son KAP Bildirimleri**")
+      if kap_bildirimleri:
+        for k in kap_bildirimleri:
+          st.markdown(f"- [{k['baslik']}]({k['link']})")
+      else:
+        st.info("Yakın zamanda eşleşen KAP bildirimi bulunamadı.")
   else:
     st.warning("Bu hisse için yeterli tarihsel veri alınamadı.")
 
@@ -432,7 +453,6 @@ with tab_matris:
       " SAT 2...** derecesi verilir."
   )
   
-  # Yeni Hızlandırıcı Kapsam Seçimi
   tarama_kapsami = st.radio(
       "Tarama Hızı & Kapsamı:",
       ["Sadece Popüler/İlk 50 Hisse (Çok Hızlı ⚡)", "Tüm BİST Hisseleri (Yavaş 🐢)"],
@@ -442,12 +462,10 @@ with tab_matris:
   if st.button("🚀 Piyasayı Tara ve Sıralı Matrisi Oluştur"):
     matris_verileri = []
     
-    # Hız seçeneğine göre hedef listeyi belirle
     hedef_liste = bist_hisseler[:50] if "50" in tarama_kapsami else bist_hisseler
     toplam = len(hedef_liste)
     progress_bar = st.progress(0)
     
-    # Tekil hisse tarama fonksiyonu (Haber taraması bulk taramada hız için kapalı)
     def tekil_tara(h_kodu):
         try:
             df_m = veri_cek_ve_hazirla(h_kodu)
@@ -467,7 +485,6 @@ with tab_matris:
         return None
 
     tamamlanan = 0
-    # ThreadPoolExecutor ile çoklu asenkron tarama
     with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
         gelecek_islemler = {executor.submit(tekil_tara, h_kodu): h_kodu for h_kodu in hedef_liste}
         for future in concurrent.futures.as_completed(gelecek_islemler):
@@ -498,13 +515,11 @@ with tab_matris:
       df_final = pd.DataFrame(final_liste)
       df_final = df_final[["Sinyal Derecesi", "Hisse", "Son Fiyat (TL)", "RSI", "İdeal Alım", "İdeal Satış", "Puan"]]
       
-      # DÜZELTME: Tarama sonucunu hafızaya kaydediyoruz (Hızlı İşlem butonu çalışması için şart)
       st.session_state.tarama_sonucu = df_final
       st.success("Tarama ve Dereceli Sıralama Tamamlandı!")
     else:
       st.warning("Tarama sırasında yeterli veri alınamadı.")
 
-  # EĞER HAFIZADA TARAMA SONUCU VARSA TABLOYU VE HIZLI İŞLEM PANELİNİ GÖSTER
   if "tarama_sonucu" in st.session_state:
     df_gosterim = st.session_state.tarama_sonucu
     st.dataframe(
