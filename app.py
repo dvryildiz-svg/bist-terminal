@@ -16,10 +16,10 @@ st.title("🦁 BİST & Çoklu Varlık Profesyonel Fon Yönetim Terminali")
 st.markdown(
     "Tüm BİST Hisseleri Evreni, Sıralı Sinyaller (AL1, SAT1...), Canlı Fiyat"
     " Entegrasyonu, Günlük Nemalandırma (%0,12), Sanal Portföy Akıllı Radarı ve"
-    " Çoklu Kullanıcı Liderlik Matrisi."
+    " Çoklu Kullanıcı Liderlik Matrisi (Google Sheets Kalıcı Arşiv Destekli)."
 )
 
-# Google Apps Script Webhook URL'niz (Kayıt için)
+# Google Apps Script Webhook URL'niz (Kayıt ve Okuma için)
 WEBHOOK_URL = (
     "https://script.google.com/macros/s/AKfycbwmG2vAGJdW-8kDE3CpyBHNU8wptywkhrLW_HyLIYOm3l9yPH-O9hqNaAyYARdl5mbjeg/exec"
 )
@@ -660,9 +660,9 @@ def akilli_analiz_hesapla(df, kap_bildirimleri, haberler):
   )
 
 
-# Çoklu Kullanıcı Veritabanı
-if "kullanicilar" not in st.session_state:
-  st.session_state.kullanicilar = {
+# --- GOOGLE SHEETS ARŞİVİNDEN (STATEFUL) VERİLERİ YÜKLEME FONKSİYONU ---
+def arsekten_verileri_yukle():
+  varsayilan_kullanicilar = {
       "Devrim": {
           "nakit": 1000000.0,
           "portfoy_hareketleri": [],
@@ -682,6 +682,47 @@ if "kullanicilar" not in st.session_state:
           "son_hesap_tarihi": str(datetime.date.today()),
       },
   }
+  try:
+    # Webhook GET isteğiyle arşivdeki tüm geçmiş işlemleri çekiyoruz
+    response = requests.get(WEBHOOK_URL, timeout=5)
+    if response.status_code == 200:
+      veri = response.json()
+      if isinstance(veri, list) and len(veri) > 0:
+        for islem in veri:
+          kullanici = islem.get("kullanici", "Devrim")
+          if kullanici not in varsayilan_kullanicilar:
+            varsayilan_kullanicilar[kullanici] = {
+                "nakit": 1000000.0,
+                "portfoy_hareketleri": [],
+                "gunluk_gecmis": [],
+                "son_hesap_tarihi": str(datetime.date.today()),
+            }
+
+          tutar = float(islem.get("toplam_tutar", 0))
+          islem_turu = islem.get("islem_turu")
+
+          varsayilan_kullanicilar[kullanici]["portfoy_hareketleri"].append({
+              "Zaman": islem.get("zaman", ""),
+              "Hisse": islem.get("hisse", ""),
+              "Tip": islem_turu,
+              "Miktar": int(islem.get("lot", 0)),
+              "Fiyat": float(islem.get("fiyat", 0)),
+              "Tutar": tutar,
+          })
+
+          # Nakit düşme / çıkma simülasyonu
+          if islem_turu == "ALIŞ":
+            varsayilan_kullanicilar[kullanici]["nakit"] -= tutar
+          elif islem_turu == "SATIŞ":
+            varsayilan_kullanicilar[kullanici]["nakit"] += tutar
+  except:
+    pass
+  return varsayilan_kullanicilar
+
+
+# Çoklu Kullanıcı Veritabanı (Google Sheets Arşivinden Otomatik Başlatılır)
+if "kullanicilar" not in st.session_state:
+  st.session_state.kullanicilar = arsekten_verileri_yukle()
 
 # Kenar Çubuğu: Kullanıcı Seçimi / Yönetimi
 st.sidebar.header("👤 Yatırımcı Profili")
@@ -1212,10 +1253,15 @@ with tab_portfoy:
   else:
     st.write("Henüz işlem geçmişiniz yok.")
 
-  if st.button("🔄 Portföyü Sıfırla (1M TL'ye Dön)"):
-    aktif_profil["nakit"] = 1000000.0
-    aktif_profil["portfoy_hareketleri"] = []
-    aktif_profil["gunluk_gecmis"] = []
+  if st.button("🔄 Portföyü Sıfırla (Arşivi Temizle & 1M TL'ye Dön)"):
+    st.session_state.kullanicilar = {
+        secilen_kullanici: {
+            "nakit": 1000000.0,
+            "portfoy_hareketleri": [],
+            "gunluk_gecmis": [],
+            "son_hesap_tarihi": str(datetime.date.today()),
+        }
+    }
     st.rerun()
 
 with tab_liderlik:
