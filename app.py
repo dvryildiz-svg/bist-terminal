@@ -934,6 +934,7 @@ with tab_liderlik:
     )
 
 # --- ZİNCİR EMİRLER SEKME ---
+# --- ZİNCİR EMİRLER SEKME ---
 with tab_zincir:
   st.subheader("⚙️ Otomatik Alım-Satım & Zincir Emir Modülü")
   st.markdown("Bu ekrandan hedef fiyatları belirleyerek tekli veya **birbirine bağlı zincir emirler** kurabilirsiniz. Tetikleyici Motor açık olduğu sürece sistem piyasayı otomatik tarar ve şartlar oluştuğunda işlemleri gerçekleştirir.")
@@ -944,6 +945,136 @@ with tab_zincir:
   with col_bilgi:
       if motor_aktif:
           st.success("Tetikleyici Motor Devrede! Sistem her 30 saniyede bir güncel fiyatları tarayarak şartlı emirleri kontrol ediyor...")
-      elseŞu anki sohbet geçmişimizde üzerinde çalıştığımız bir kod bulunmuyor. Hangi konuya ait kodların tamamını istediğinizi (örneğin; POS komisyon simülatörü, B2B ödeme entegrasyonu veya farklı bir script) belirtebilir misiniz? 
+      else:
+          st.info("Motor kapalı. Bekleyen emirleriniz kayıtlı duruyor ancak piyasa izlenmiyor.")
 
-İhtiyacınız olan dili ve işlevi paylaştığınızda tüm yapıyı sizin için hemen hazırlayabilirim.
+  st.markdown("---")
+  st.subheader("🔗 Yeni Emir & Zincir Senaryosu Kur")
+  
+  with st.form("zincir_kurulum_formu"):
+      st.markdown("**1. Adım: Ana Tetikleyici Emir** (İlk bu şartın gerçekleşmesi beklenir)")
+      col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+      z_hisse = col_m1.selectbox("Hisse / Varlık", tum_islem_varliklari)
+      z_tip = col_m2.selectbox("İşlem Tipi", ["ALIŞ", "SATIŞ"])
+      z_fiyat = col_m3.number_input("Hedef Fiyat (TL)", min_value=0.01, value=10.0, step=0.05)
+      z_lot = col_m4.number_input("Miktar (Lot)", min_value=1, value=100, step=10)
+
+      st.markdown("**2. Adım: Zincir Halka Emirler** (Ana emir gerçekleşirse sırayla aktif olurlar. İstemiyorsanız 0 bırakın)")
+      
+      zincir_adimlari = []
+      for i in range(1, 11):
+          with st.expander(f"Zincir Adım {i} (Opsiyonel)"):
+              zc1, zc2, zc3 = st.columns(3)
+              zincir_tip = zc1.selectbox(f"{i}. Tip", ["ALIŞ", "SATIŞ"], key=f"ztip_{i}")
+              zincir_fiyat = zc2.number_input(f"{i}. Hedef Fiyat", min_value=0.0, value=0.0, step=0.05, key=f"zfiy_{i}")
+              zincir_lot = zc3.number_input(f"{i}. Miktar", min_value=0, value=0, step=10, key=f"zlot_{i}")
+              zincir_adimlari.append({
+                  "adim": i, "tip": zincir_tip, "fiyat": zincir_fiyat, "lot": zincir_lot
+              })
+
+      z_kaydet = st.form_submit_button("✅ Emir Senaryosunu Sisteme Yükle")
+      if z_kaydet:
+          ana_emir_id = str(uuid.uuid4())[:8]
+          
+          st.session_state.zincir_emirler[secilen_kullanici].append({
+              "id": ana_emir_id,
+              "bagli_id": None,
+              "hisse": z_hisse,
+              "tip": z_tip,
+              "fiyat": z_fiyat,
+              "lot": z_lot,
+              "durum": "BEKLİYOR"
+          })
+          
+          onceki_id = ana_emir_id
+          eklenen_zincir_sayisi = 0
+          for adim in zincir_adimlari:
+              if adim["fiyat"] > 0 and adim["lot"] > 0:
+                  yeni_id = str(uuid.uuid4())[:8]
+                  st.session_state.zincir_emirler[secilen_kullanici].append({
+                      "id": yeni_id,
+                      "bagli_id": onceki_id,
+                      "hisse": z_hisse,
+                      "tip": adim["tip"],
+                      "fiyat": adim["fiyat"],
+                      "lot": adim["lot"],
+                      "durum": "PASİF (Önceki Bekleniyor)"
+                  })
+                  onceki_id = yeni_id
+                  eklenen_zincir_sayisi += 1
+                  
+          st.success(f"Ana emir ve {eklenen_zincir_sayisi} adet zincir adım başarıyla havuza eklendi!")
+          st.rerun()
+
+  st.markdown("---")
+  st.subheader("📋 Bekleyen ve Gerçekleşen Emir Havuzu")
+  
+  kullanici_emirleri = st.session_state.zincir_emirler[secilen_kullanici]
+  if kullanici_emirleri:
+      df_emirler = pd.DataFrame(kullanici_emirleri)
+      st.dataframe(df_emirler, use_container_width=True)
+      if st.button("🗑️ Gerçekleşenleri ve İptalleri Temizle"):
+          st.session_state.zincir_emirler[secilen_kullanici] = [e for e in kullanici_emirleri if e["durum"] in ["BEKLİYOR", "PASİF (Önceki Bekleniyor)"]]
+          st.rerun()
+  else:
+      st.info("Şu an havuzunuzda bekleyen hiçbir otomatik/şartlı emir yok.")
+
+  # OTOMATİK TARAMA MOTORU
+  if motor_aktif:
+      islem_oldu_mu = False
+      zaman_str = datetime.datetime.now(TZ_TR).strftime("%d.%m.%Y %H:%M:%S")
+      
+      def emir_gerceklesti_mi(hedef_id):
+          for e in kullanici_emirleri:
+              if e["id"] == hedef_id and e["durum"] == "GERÇEKLEŞTİ":
+                  return True
+          return False
+
+      for emir in kullanici_emirleri:
+          if emir["durum"] == "PASİF (Önceki Bekleniyor)":
+              if emir_gerceklesti_mi(emir["bagli_id"]):
+                  emir["durum"] = "BEKLİYOR"
+                  islem_oldu_mu = True
+
+          if emir["durum"] == "BEKLİYOR":
+              if emir["hisse"] in alternatif_varliklar:
+                  anlik_f = alternatif_fiyat_cek(emir["hisse"])
+              else:
+                  anlik_f = motor_hisse_anlik_fiyat(emir["hisse"])
+              
+              if anlik_f:
+                  toplam_tutar = emir["lot"] * anlik_f
+                  tetiklendi = False
+                  
+                  if emir["tip"] == "ALIŞ" and anlik_f <= emir["fiyat"]:
+                      if aktif_profil["nakit"] >= toplam_tutar:
+                          aktif_profil["nakit"] -= toplam_tutar
+                          tetiklendi = True
+                      else:
+                          emir["durum"] = "İPTAL (Yetersiz Nakit)"
+                          islem_oldu_mu = True
+                          
+                  elif emir["tip"] == "SATIŞ" and anlik_f >= emir["fiyat"]:
+                      sahip_olunan = sum([i["Miktar"] for i in aktif_profil["portfoy_hareketleri"] if i["Hisse"] == emir["hisse"] and i["Tip"] == "ALIŞ"]) - \
+                                     sum([i["Miktar"] for i in aktif_profil["portfoy_hareketleri"] if i["Hisse"] == emir["hisse"] and i["Tip"] == "SATIŞ"])
+                      if sahip_olunan >= emir["lot"]:
+                          aktif_profil["nakit"] += toplam_tutar
+                          tetiklendi = True
+                      else:
+                          emir["durum"] = "İPTAL (Yetersiz Lot)"
+                          islem_oldu_mu = True
+
+                  if tetiklendi:
+                      aktif_profil["portfoy_hareketleri"].append({
+                          "Zaman": zaman_str, "Hisse": emir["hisse"], "Tip": emir["tip"],
+                          "Miktar": emir["lot"], "Fiyat": anlik_f, "Tutar": toplam_tutar
+                      })
+                      emir["durum"] = "GERÇEKLEŞTİ"
+                      islem_oldu_mu = True
+                      try:
+                          requests.post(WEBHOOK_URL, json={"zaman": zaman_str, "kullanici": secilen_kullanici, "hisse": emir["hisse"], "islem_turu": emir["tip"], "lot": emir["lot"], "fiyat": anlik_f, "toplam_tutar": toplam_tutar}, timeout=5)
+                      except: pass
+
+      # Motorun Streamlit arayüzünü kilitlememesi için 30 saniye uyutup sayfayı yeniliyoruz.
+      time.sleep(30)
+      st.rerun()
