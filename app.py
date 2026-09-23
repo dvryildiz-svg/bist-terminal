@@ -184,15 +184,28 @@ def akilli_analiz_hesapla(df, kap_bildirimleri, haberler):
   ideal_alim = son_fiyat * 0.97
   ideal_satim = son_fiyat * 1.05
 
-  if son_rsi < 35: puan += 2; nedenler.append(f"RSI aşırı satımda ({son_rsi:.1f}).")
-  elif son_rsi > 65: puan -= 2; nedenler.append(f"RSI aşırı alımda ({son_rsi:.1f}).")
-  else: nedenler.append(f"RSI nötr bölgede ({son_rsi:.1f}).")
+  if son_rsi < 35:
+    puan += 2
+    nedenler.append(f"RSI aşırı satımda ({son_rsi:.1f}), tepki alımı gelebilir.")
+  elif son_rsi > 65:
+    puan -= 2
+    nedenler.append(f"RSI aşırı alımda ({son_rsi:.1f}), dikkatli olunmalı.")
+  else:
+    nedenler.append(f"RSI nötr bölgede ({son_rsi:.1f}).")
 
-  if son_fiyat > son_sma50: puan += 1; nedenler.append("Fiyat 50 günlük ortalamanın üzerinde.")
-  else: puan -= 1; nedenler.append("Fiyat 50 günlük ortalamanın altında.")
+  if son_fiyat > son_sma50:
+    puan += 1
+    nedenler.append("Fiyat 50 günlük ortalamanın üzerinde.")
+  else:
+    puan -= 1
+    nedenler.append("Fiyat 50 günlük ortalamanın altında.")
 
-  if son_fiyat > son_sma200: puan += 2; nedenler.append("Uzun vadeli ana trend pozitif.")
-  else: puan -= 2; nedenler.append("Uzun vadeli ana trend baskı altında.")
+  if son_fiyat > son_sma200:
+    puan += 2
+    nedenler.append("Uzun vadeli ana trend pozitif.")
+  else:
+    puan -= 2
+    nedenler.append("Uzun vadeli ana trend baskı altında.")
 
   olumlu = ["sözleşme", "ihale", "kar", "rekor", "artış", "onay", "yatırım"]
   olumsuz = ["zarar", "ceza", "soruşturma", "dava", "borç", "düşüş"]
@@ -204,11 +217,19 @@ def akilli_analiz_hesapla(df, kap_bildirimleri, haberler):
     for ol in olumsuz:
       if ol in m: haber_skoru -= 1
 
-  if haber_skoru > 0: puan += 2; nedenler.append(f"Haber akışı olumlu.")
-  elif haber_skoru < 0: puan -= 2; nedenler.append(f"Haber akışı olumsuz.")
-  else: nedenler.append("Haber akışı dengeli.")
+  if haber_skoru > 0:
+    puan += 2
+    nedenler.append(f"Haber akışı olumlu (Skor: +{haber_skoru}).")
+  elif haber_skoru < 0:
+    puan -= 2
+    nedenler.append(f"Haber akışı olumsuz (Skor: {haber_skoru}).")
+  else:
+    nedenler.append("Haber akışı dengeli.")
 
-  karar = "AL" if puan >= 3 else ("SAT" if puan <= -2 else "TUT")
+  if puan >= 3: karar = "AL"
+  elif puan <= -2: karar = "SAT"
+  else: karar = "TUT"
+
   return karar, puan, nedenler, son_fiyat, son_rsi, son_sma50, son_sma200, ideal_alim, ideal_satim
 
 def arsekten_verileri_yukle():
@@ -554,7 +575,7 @@ with tab_liderlik:
   st.dataframe(pd.DataFrame(liderlik), use_container_width=True)
 
 
-# --- 5. SEKME: OTOMATİK & ZİNCİR EMİRLER (DİNAMİK FİYAT MİMARİSİ) ---
+# --- 5. SEKME: OTOMATİK & ZİNCİR EMİRLER (AKILLI HAVUZ & DİNAMİK FİYAT MİMARİSİ) ---
 with tab_zincir:
   st.subheader("⚙️ Otomatik Alım-Satım & Zincir Emir Modülü")
   st.markdown("Bu ekrandan hedef fiyatlar belirleyerek birbirine bağlı 10 slotlu zincir emirler kurabilirsiniz.")
@@ -602,17 +623,20 @@ with tab_zincir:
       else:
           z_hisse = col_m1.selectbox("Hisse / Varlık", tum_islem_varliklari, key="z_hisse_a_dyn")
 
-      # --- DİNAMİK FİYAT HESAPLAMA (Hedef fiyatın hissenin gerçek değerine yakın gelmesi için) ---
+      # --- DİNAMİK FİYAT ÇEKİCİ ---
       if z_hisse != "---":
           if z_hisse in alternatif_varliklar:
-              baz_fiyat = alternatif_fiyat_cek(z_hisse)
+              anlik_baz_fiyat = alternatif_fiyat_cek(z_hisse)
           else:
-              baz_fiyat = motor_hisse_anlik_fiyat(z_hisse) or 50.0
+              anlik_baz_fiyat = motor_hisse_anlik_fiyat(z_hisse)
+              if not anlik_baz_fiyat:
+                  df_temp = veri_cek_ve_hazirla(z_hisse)
+                  anlik_baz_fiyat = float(df_temp["Kapanis"].iloc[-1]) if (df_temp is not None and not df_temp.empty) else 50.0
       else:
-          baz_fiyat = 10.0
+          anlik_baz_fiyat = 10.0
 
-      z_fiyat = col_m3.number_input("Hedef Fiyat (TL)", min_value=0.01, value=float(baz_fiyat), step=0.05, format="%.2f", key=f"z_fiyat_dyn_{z_hisse}")
-      z_lot = col_m4.number_input("Miktar (Lot)", min_value=1, value=100, step=10, key="z_lot_dyn")
+      z_fiyat = col_m3.number_input("Hedef Fiyat (TL)", min_value=0.01, value=float(anlik_baz_fiyat), step=0.05, format="%.2f", key=f"z_fiyat_input_{z_hisse}")
+      z_lot = col_m4.number_input("Miktar (Lot)", min_value=1, value=100, step=10, key=f"z_lot_input_{z_hisse}")
 
       st.markdown("**2. Adım: Zincir Halka Emirler (10 Slot)**")
       zincir_adimlari = []
