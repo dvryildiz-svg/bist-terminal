@@ -21,7 +21,7 @@ st.set_page_config(
 st.title("🦁 BİST & Çoklu Varlık Profesyonel Fon Yönetim Terminali")
 st.markdown(
     "Tüm BİST Hisseleri Evreni, Sıralı Sinyaller, Gün İçi Fiyat Entegrasyonu,"
-    " Sanal Portföy, Hızlı İşlem Paneli ve **Otomatik Zincir Emir Motoru**."
+    " Sanal Portföy Grafikleri, Hızlı İşlem Paneli ve **Otomatik Zincir Emir Motoru**."
 )
 
 # GARANTİLİ WEBHOOK URL'NİZ
@@ -76,11 +76,20 @@ bist_hisseler = sorted([
     "ZOREN", "ZRGYO"
 ])
 
-alternatif_varliklar = ["USD/TRY", "EUR/TRY", "GBP/TRY", "Gram Altın (TL)", "Gram Gümüş (TL)"]
+alternatif_varliklar = [
+    "USD/TRY",
+    "EUR/TRY",
+    "GBP/TRY",
+    "Gram Altın (TL)",
+    "Gram Gümüş (TL)",
+]
 tum_islem_varliklari = sorted(bist_hisseler) + alternatif_varliklar
 
+# Zamanları Türkiye saatine göre alıyoruz
 bitis_tarihi = datetime.datetime.now(TZ_TR).strftime("%d-%m-%Y")
-baslangic_tarihi = (datetime.datetime.now(TZ_TR) - datetime.timedelta(days=365)).strftime("%d-%m-%Y")
+baslangic_tarihi = (
+    datetime.datetime.now(TZ_TR) - datetime.timedelta(days=365)
+).strftime("%d-%m-%Y")
 
 # --- HIZLI ANLIK FİYAT ÇEKİCİ (MOTOR İÇİN) ---
 def motor_hisse_anlik_fiyat(hisse):
@@ -95,29 +104,47 @@ def motor_hisse_anlik_fiyat(hisse):
 @st.cache_data(ttl=300)
 def veri_cek_ve_hazirla(hisse):
   try:
-    df = fetch_stock_data(symbols=[hisse], start_date=baslangic_tarihi, end_date=bitis_tarihi)
+    df = fetch_stock_data(
+        symbols=[hisse], start_date=baslangic_tarihi, end_date=bitis_tarihi
+    )
     if df is not None and not df.empty:
       df.columns = [str(col).upper() for col in df.columns]
-      tarih_kolonu = next((c for c in df.columns if "TARIH" in c or "DATE" in c), None)
-      kapanis_kolonu = next((c for c in df.columns if "KAP" in c or "CLOSE" in c or "FIYAT" in c), None)
+      tarih_kolonu = next(
+          (c for c in df.columns if "TARIH" in c or "DATE" in c), None
+      )
+      kapanis_kolonu = next(
+          (
+              c
+              for c in df.columns
+              if "KAP" in c or "CLOSE" in c or "FIYAT" in c
+          ),
+          None,
+      )
+
       if tarih_kolonu and kapanis_kolonu:
-        df["Tarih"] = pd.to_datetime(df[tarih_kolonu], format="%d-%m-%Y", errors="coerce")
+        df["Tarih"] = pd.to_datetime(
+            df[tarih_kolonu], format="%d-%m-%Y", errors="coerce"
+        )
         df = df.dropna(subset=["Tarih"]).sort_values("Tarih")
         df["Kapanis"] = pd.to_numeric(df[kapanis_kolonu], errors="coerce")
         
+        # --- HİBRİT ENTEGRASYON: Yahoo Finance'den Gün İçi Fiyatı Çek ---
         try:
             yf_data = yf.Ticker(f"{hisse}.IS").history(period="1d")
             if not yf_data.empty:
                 anlik_fiyat = float(yf_data["Close"].iloc[-1])
                 bugun = pd.to_datetime(datetime.datetime.now(TZ_TR).date())
                 son_tarih = pd.to_datetime(df["Tarih"].iloc[-1]).normalize()
+                
                 if bugun > son_tarih:
                     yeni_satir = pd.DataFrame({"Tarih": [bugun], "Kapanis": [anlik_fiyat]})
                     df = pd.concat([df, yeni_satir], ignore_index=True)
                 else:
                     df.loc[df.index[-1], "Kapanis"] = anlik_fiyat
         except:
-            pass
+            pass 
+        # ----------------------------------------------------------------
+        
         return df
   except:
     pass
@@ -126,23 +153,41 @@ def veri_cek_ve_hazirla(hisse):
 @st.cache_data(ttl=60)
 def alternatif_fiyat_cek(varlik):
   try:
-    if varlik == "USD/TRY": return float(yf.Ticker("USDTRY=X").history(period="1d")["Close"].iloc[-1])
-    elif varlik == "EUR/TRY": return float(yf.Ticker("EURTRY=X").history(period="1d")["Close"].iloc[-1])
-    elif varlik == "GBP/TRY": return float(yf.Ticker("GBPTRY=X").history(period="1d")["Close"].iloc[-1])
-    elif varlik == "Gram Altın (TL)": return float((yf.Ticker("GC=F").history(period="1d")["Close"].iloc[-1] * yf.Ticker("USDTRY=X").history(period="1d")["Close"].iloc[-1]) / 31.1035)
-    elif varlik == "Gram Gümüş (TL)": return float((yf.Ticker("SI=F").history(period="1d")["Close"].iloc[-1] * yf.Ticker("USDTRY=X").history(period="1d")["Close"].iloc[-1]) / 31.1035)
-  except: return 10.0
+    if varlik == "USD/TRY":
+      return float(yf.Ticker("USDTRY=X").history(period="1d")["Close"].iloc[-1])
+    elif varlik == "EUR/TRY":
+      return float(yf.Ticker("EURTRY=X").history(period="1d")["Close"].iloc[-1])
+    elif varlik == "GBP/TRY":
+      return float(yf.Ticker("GBPTRY=X").history(period="1d")["Close"].iloc[-1])
+    elif varlik == "Gram Altın (TL)":
+      altin_ons = yf.Ticker("GC=F").history(period="1d")["Close"].iloc[-1]
+      usd_try = yf.Ticker("USDTRY=X").history(period="1d")["Close"].iloc[-1]
+      return float((altin_ons * usd_try) / 31.1035)
+    elif varlik == "Gram Gümüş (TL)":
+      gumus_ons = yf.Ticker("SI=F").history(period="1d")["Close"].iloc[-1]
+      usd_try = yf.Ticker("USDTRY=X").history(period="1d")["Close"].iloc[-1]
+      return float((gumus_ons * usd_try) / 31.1035)
+  except:
+    return 10.0
   return 10.0
 
 @st.cache_data(ttl=1800)
 def haberleri_ve_kap_getir(hisse_kodu):
   try:
     url_haber = f"https://news.google.com/rss/search?q={hisse_kodu}+hisse+borsa&hl=TR&gl=TR&ceid=TR:tr"
-    haberler = [{"baslik": entry.title, "link": entry.link} for entry in parse(url_haber).entries[:4]]
+    haberler = [
+        {"baslik": entry.title, "link": entry.link}
+        for entry in parse(url_haber).entries[:4]
+    ]
+
     url_kap = f"https://news.google.com/rss/search?q={hisse_kodu}+KAP+bildirimi+özel+durum&hl=TR&gl=TR&ceid=TR:tr"
-    kap_bildirimleri = [{"baslik": entry.title, "link": entry.link} for entry in parse(url_kap).entries[:4]]
+    kap_bildirimleri = [
+        {"baslik": entry.title, "link": entry.link}
+        for entry in parse(url_kap).entries[:4]
+    ]
     return haberler, kap_bildirimleri
-  except: return [], []
+  except:
+    return [], []
 
 def akilli_analiz_hesapla(df, kap_bildirimleri, haberler):
   nedenler = []
@@ -154,68 +199,124 @@ def akilli_analiz_hesapla(df, kap_bildirimleri, haberler):
   rs = gain / loss
   df["RSI"] = 100 - (100 / (1 + rs))
   son_rsi = df["RSI"].iloc[-1]
+
   df["SMA50"] = df["Kapanis"].rolling(window=50).mean()
   df["SMA200"] = df["Kapanis"].rolling(window=200).mean()
   son_sma50 = df["SMA50"].iloc[-1]
   son_sma200 = df["SMA200"].iloc[-1]
+
   ideal_alim = son_fiyat * 0.97
   ideal_satim = son_fiyat * 1.05
 
-  if son_rsi < 35: puan += 2; nedenler.append(f"RSI aşırı satımda ({son_rsi:.1f}).")
-  elif son_rsi > 65: puan -= 2; nedenler.append(f"RSI aşırı alımda ({son_rsi:.1f}).")
-  if son_fiyat > son_sma50: puan += 1; nedenler.append("Fiyat 50 günlük ortalamanın üzerinde.")
-  else: puan -= 1; nedenler.append("Fiyat 50 günlük ortalamanın altında.")
-  if son_fiyat > son_sma200: puan += 2; nedenler.append("Uzun vadeli ana trend pozitif.")
-  else: puan -= 2; nedenler.append("Uzun vadeli ana trend baskı altında.")
+  if son_rsi < 35:
+    puan += 2
+    nedenler.append(f"RSI aşırı satımda ({son_rsi:.1f}), tepki alımı gelebilir.")
+  elif son_rsi > 65:
+    puan -= 2
+    nedenler.append(f"RSI aşırı alımda ({son_rsi:.1f}), dikkatli olunmalı.")
+  else:
+    nedenler.append(f"RSI nötr bölgede ({son_rsi:.1f}).")
+
+  if son_fiyat > son_sma50:
+    puan += 1
+    nedenler.append("Fiyat 50 günlük ortalamanın üzerinde.")
+  else:
+    puan -= 1
+    nedenler.append("Fiyat 50 günlük ortalamanın altında.")
+
+  if son_fiyat > son_sma200:
+    puan += 2
+    nedenler.append("Uzun vadeli ana trend pozitif.")
+  else:
+    puan -= 2
+    nedenler.append("Uzun vadeli ana trend baskı altında.")
 
   olumlu = ["sözleşme", "ihale", "kar", "rekor", "artış", "onay", "yatırım"]
   olumsuz = ["zarar", "ceza", "soruşturma", "dava", "borç", "düşüş"]
   haber_skoru = 0
-  tarananlar = [k["baslik"].lower() for k in kap_bildirimleri] + [h["baslik"].lower() for h in haberler]
+  tarananlar = [k["baslik"].lower() for k in kap_bildirimleri] + [
+      h["baslik"].lower() for h in haberler
+  ]
   for m in tarananlar:
     for o in olumlu:
-        if o in m: haber_skoru += 1
+      if o in m: haber_skoru += 1
     for ol in olumsuz:
-        if ol in m: haber_skoru -= 1
+      if ol in m: haber_skoru -= 1
 
-  if haber_skoru > 0: puan += 2
-  elif haber_skoru < 0: puan -= 2
+  if haber_skoru > 0:
+    puan += 2
+    nedenler.append(f"Haber akışı olumlu (Skor: +{haber_skoru}).")
+  elif haber_skoru < 0:
+    puan -= 2
+    nedenler.append(f"Haber akışı temkinli/olumsuz (Skor: {haber_skoru}).")
+  else:
+    nedenler.append("Haber akışı dengeli.")
 
-  karar = "AL" if puan >= 3 else ("SAT" if puan <= -2 else "TUT")
+  if puan >= 3: karar = "AL"
+  elif puan <= -2: karar = "SAT"
+  else: karar = "TUT"
+
   return karar, puan, nedenler, son_fiyat, son_rsi, son_sma50, son_sma200, ideal_alim, ideal_satim
 
+# --- GOOGLE SHEETS ARŞİVİNDEN (STATEFUL) VERİLERİ YÜKLEME ---
 def arsekten_verileri_yukle():
   varsayilan_kullanicilar = {
       "Devrim": {"nakit": 1000000.0, "portfoy_hareketleri": [], "gunluk_gecmis": [], "son_hesap_tarihi": str(datetime.datetime.now(TZ_TR).date())},
       "Orhan": {"nakit": 1000000.0, "portfoy_hareketleri": [], "gunluk_gecmis": [], "son_hesap_tarihi": str(datetime.datetime.now(TZ_TR).date())},
       "Ali Yiğit": {"nakit": 1000000.0, "portfoy_hareketleri": [], "gunluk_gecmis": [], "son_hesap_tarihi": str(datetime.datetime.now(TZ_TR).date())},
   }
+  
   try:
     response = requests.get(WEBHOOK_URL, timeout=30)
     if response.status_code == 200:
       try:
         veri = response.json()
-      except Exception:
+      except Exception as e:
+        st.error("⚠️ BİLGİ: Google E-Tablo JSON verisi göndermedi. Apps Script ayarlarında 'Execute as: ME' ve 'Who has access: ANYONE' olduğundan emin olun.")
         return varsayilan_kullanicilar
+
       if isinstance(veri, list) and len(veri) > 0:
         for islem in veri:
           kullanici = islem.get("kullanici", "Devrim")
           if kullanici not in varsayilan_kullanicilar:
-            varsayilan_kullanicilar[kullanici] = {"nakit": 1000000.0, "portfoy_hareketleri": [], "gunluk_gecmis": [], "son_hesap_tarihi": str(datetime.datetime.now(TZ_TR).date())}
-          tutar = float(str(islem.get("toplam_tutar", 0)).replace(",", "."))
-          fiyat = float(str(islem.get("fiyat", 0)).replace(",", "."))
-          lot = int(float(str(islem.get("lot", 0)).replace(",", ".")))
+            varsayilan_kullanicilar[kullanici] = {
+                "nakit": 1000000.0,
+                "portfoy_hareketleri": [],
+                "gunluk_gecmis": [],
+                "son_hesap_tarihi": str(datetime.datetime.now(TZ_TR).date()),
+            }
+
+          tutar_raw = islem.get("toplam_tutar", 0)
+          tutar = float(str(tutar_raw).replace(",", ".")) if tutar_raw else 0.0
+          
+          fiyat_raw = islem.get("fiyat", 0)
+          fiyat = float(str(fiyat_raw).replace(",", ".")) if fiyat_raw else 0.0
+
+          lot_raw = islem.get("lot", 0)
+          lot = int(float(str(lot_raw).replace(",", "."))) if lot_raw else 0
+
           islem_turu = islem.get("islem_turu")
 
           varsayilan_kullanicilar[kullanici]["portfoy_hareketleri"].append({
-              "Zaman": islem.get("zaman", ""), "Hisse": islem.get("hisse", ""), "Tip": islem_turu,
-              "Miktar": lot, "Fiyat": fiyat, "Tutar": tutar,
+              "Zaman": islem.get("zaman", ""),
+              "Hisse": islem.get("hisse", ""),
+              "Tip": islem_turu,
+              "Miktar": lot,
+              "Fiyat": fiyat,
+              "Tutar": tutar,
           })
-          if islem_turu == "ALIŞ": varsayilan_kullanicilar[kullanici]["nakit"] -= tutar
-          elif islem_turu == "SATIŞ": varsayilan_kullanicilar[kullanici]["nakit"] += tutar
-  except:
-    pass
+
+          if islem_turu == "ALIŞ":
+            varsayilan_kullanicilar[kullanici]["nakit"] -= tutar
+          elif islem_turu == "SATIŞ":
+            varsayilan_kullanicilar[kullanici]["nakit"] += tutar
+  except requests.exceptions.Timeout:
+    st.error("⚠️ BAĞLANTI HATASI: Google E-Tablolar 30 saniye içinde yanıt vermedi (Timeout). Veriler geçici olarak yüklenemedi.")
+  except Exception as e:
+    st.error(f"⚠️ Beklenmeyen Veri Çekme Hatası: {e}")
+    
   return varsayilan_kullanicilar
+
 
 if "kullanicilar" not in st.session_state:
   st.session_state.kullanicilar = arsekten_verileri_yukle()
@@ -223,31 +324,46 @@ if "zincir_emirler" not in st.session_state:
   st.session_state.zincir_emirler = {}
 
 st.sidebar.header("👤 Yatırımcı Profili")
-secilen_kullanici = st.sidebar.selectbox("Aktif Trader Seçin:", list(st.session_state.kullanicilar.keys()))
+secilen_kullanici = st.sidebar.selectbox(
+    "Aktif Trader Seçin:", list(st.session_state.kullanicilar.keys())
+)
 
 if secilen_kullanici not in st.session_state.zincir_emirler:
     st.session_state.zincir_emirler[secilen_kullanici] = []
 
 with st.sidebar.form("yeni_profil_formu"):
   yeni_kullanici_adi = st.text_input("Veya Yeni Trader Ekle:")
-  if st.form_submit_button("Profili Oluştur/Geç") and yeni_kullanici_adi.strip():
+  profil_olustur_btn = st.form_submit_button("Profili Oluştur/Geç")
+
+  if profil_olustur_btn:
+    if yeni_kullanici_adi.strip():
       temiz_ad = yeni_kullanici_adi.strip()
       if temiz_ad not in st.session_state.kullanicilar:
-        st.session_state.kullanicilar[temiz_ad] = {"nakit": 1000000.0, "portfoy_hareketleri": [], "gunluk_gecmis": [], "son_hesap_tarihi": str(datetime.datetime.now(TZ_TR).date())}
+        st.session_state.kullanicilar[temiz_ad] = {
+            "nakit": 1000000.0,
+            "portfoy_hareketleri": [],
+            "gunluk_gecmis": [],
+            "son_hesap_tarihi": str(datetime.datetime.now(TZ_TR).date()),
+        }
         st.session_state.zincir_emirler[temiz_ad] = []
+        st.success(f"Hoş geldin {temiz_ad}! 1M TL sermayeniz tanımlandı.")
         st.rerun()
+      else:
+        st.warning("Bu isimde bir trader zaten var!")
 
 aktif_profil = st.session_state.kullanicilar[secilen_kullanici]
+
+# Günlük Nakit Nemalandırma Kontrolü (%0,12 repo faizi)
 bugun_str = str(datetime.datetime.now(TZ_TR).date())
 if aktif_profil["son_hesap_tarihi"] != bugun_str:
-  aktif_profil["nakit"] += aktif_profil["nakit"] * 0.0012
+  faiz_getirisi = aktif_profil["nakit"] * 0.0012
+  aktif_profil["nakit"] += faiz_getirisi
   aktif_profil["son_hesap_tarihi"] = bugun_str
 
 st.sidebar.markdown("---")
 st.sidebar.caption("⚡ **Powered by Devrim YILDIZ**")
 st.sidebar.caption("ℹ️ *Bu uygulama sadece kişisel fon yönetimi ve takip içindir. Yatırım tavsiyesi içermez.*")
 
-# YENİ SEKME YAPISI: Otomatik & Zincir Emirler Eklendi
 tab_tekli, tab_matris, tab_portfoy, tab_liderlik, tab_zincir = st.tabs([
     "📊 Tekli Hisse & Derin Analiz",
     "🌐 Tüm Piyasa Sinyal Matrisi (Tarama)",
@@ -258,109 +374,537 @@ tab_tekli, tab_matris, tab_portfoy, tab_liderlik, tab_zincir = st.tabs([
 
 with tab_tekli:
   default_index = bist_hisseler.index("THYAO") if "THYAO" in bist_hisseler else 0
-  secilen_hisse = st.selectbox("Analiz Etmek İstediğiniz Hisse Senedini Seçin:", bist_hisseler, index=default_index)
+  secilen_hisse = st.selectbox(
+      "Analiz Etmek İstediğiniz Hisse Senedini Seçin:",
+      bist_hisseler,
+      index=default_index,
+  )
+
   with st.spinner(f"{secilen_hisse} gün içi verileri ve haberleri yükleniyor..."):
     df = veri_cek_ve_hazirla(secilen_hisse)
     haberler, kap_bildirimleri = haberleri_ve_kap_getir(secilen_hisse)
 
   if df is not None and not df.empty and "Kapanis" in df.columns:
     karar, puan, nedenler, son_fiyat, son_rsi, son_sma50, son_sma200, ideal_alim, ideal_satim = akilli_analiz_hesapla(df, kap_bildirimleri, haberler)
+
     renk = "🟢" if karar == "AL" else ("🔴" if karar == "SAT" else "🟡")
+
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Son İşlem Fiyatı", f"{son_fiyat:.2f} TL")
     col2.metric("RSI (14)", f"{son_rsi:.1f}")
     col3.metric("İdeal Alım (Destek)", f"{ideal_alim:.2f} TL")
     col4.metric("İdeal Satış (Direnç)", f"{ideal_satim:.2f} TL")
+
     st.markdown("---")
     st.subheader(f"🧠 Akıllı Karar Önerisi: {renk} **{karar}** (Puan: {puan})")
     with st.expander("🔍 Gerekçeler ve Detaylı Analiz", expanded=True):
-      for n in nedenler: st.markdown(f"- {n}")
+      for n in nedenler:
+        st.markdown(f"- {n}")
     st.markdown("---")
+
     st.subheader(f"{secilen_hisse} Fiyat Grafiği")
     st.line_chart(df.set_index("Tarih")[["Kapanis", "SMA50", "SMA200"]])
+    
+    st.markdown("---")
+    st.subheader(f"📰 {secilen_hisse} Son Haberler & KAP Bildirimleri")
+    col_haber, col_kap = st.columns(2)
+    
+    with col_haber:
+      st.markdown("**Son Haberler**")
+      if haberler:
+        for h in haberler:
+          st.markdown(f"- [{h['baslik']}]({h['link']})")
+      else:
+        st.info("Yakın zamanda eşleşen haber bulunamadı.")
+        
+    with col_kap:
+      st.markdown("**Son KAP Bildirimleri**")
+      if kap_bildirimleri:
+        for k in kap_bildirimleri:
+          st.markdown(f"- [{k['baslik']}]({k['link']})")
+      else:
+        st.info("Yakın zamanda eşleşen KAP bildirimi bulunamadı.")
   else:
-    st.warning("Yeterli veri alınamadı.")
+    st.warning("Bu hisse için yeterli veri alınamadı.")
 
 with tab_matris:
   st.subheader("🌐 BİST Genel Tarama ve Sıralı Sinyal Matrisi")
-  tarama_kapsami = st.radio("Tarama Hızı:", ["Sadece Popüler/İlk 50 Hisse (Çok Hızlı ⚡)", "Tüm BİST Hisseleri (Yavaş 🐢)"], horizontal=True)
+  st.markdown(
+      "Sistemdeki tüm hisseler taranır; puanlarına göre en güçlü alım"
+      " kağıtlarına **AL 1, AL 2...**, en zayıf satım kağıtlarına **SAT 1,"
+      " SAT 2...** derecesi verilir."
+  )
+  
+  tarama_kapsami = st.radio(
+      "Tarama Hızı & Kapsamı:",
+      ["Sadece Popüler/İlk 50 Hisse (Çok Hızlı ⚡)", "Tüm BİST Hisseleri (Yavaş 🐢)"],
+      horizontal=True
+  )
+
   if st.button("🚀 Piyasayı Tara ve Sıralı Matrisi Oluştur"):
     matris_verileri = []
+    
     hedef_liste = bist_hisseler[:50] if "50" in tarama_kapsami else bist_hisseler
+    toplam = len(hedef_liste)
     progress_bar = st.progress(0)
+    
     def tekil_tara(h_kodu):
         try:
             df_m = veri_cek_ve_hazirla(h_kodu)
-            if df_m is not None and len(df_m) > 30:
+            if df_m is not None and not df_m.empty and len(df_m) > 30:
                 k_karar, k_puan, _, k_fiyat, k_rsi, _, _, k_alim, k_satim = akilli_analiz_hesapla(df_m, [], [])
-                return {"Hisse": h_kodu, "Puan": k_puan, "HamKarar": k_karar, "Son Fiyat (TL)": k_fiyat, "RSI": k_rsi, "İdeal Alım": k_alim, "İdeal Satış": k_satim}
-        except: pass
+                return {
+                    "Hisse": h_kodu,
+                    "Puan": k_puan,
+                    "HamKarar": k_karar,
+                    "Son Fiyat (TL)": k_fiyat,
+                    "RSI": k_rsi,
+                    "İdeal Alım": k_alim,
+                    "İdeal Satış": k_satim,
+                }
+        except:
+            pass
         return None
+
     tamamlanan = 0
     with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
-        gelecek = {executor.submit(tekil_tara, h): h for h in hedef_liste}
-        for future in concurrent.futures.as_completed(gelecek):
-            if future.result(): matris_verileri.append(future.result())
+        gelecek_islemler = {executor.submit(tekil_tara, h_kodu): h_kodu for h_kodu in hedef_liste}
+        for future in concurrent.futures.as_completed(gelecek_islemler):
+            sonuc = future.result()
+            if sonuc:
+                matris_verileri.append(sonuc)
             tamamlanan += 1
-            progress_bar.progress(tamamlanan / len(hedef_liste))
+            progress_bar.progress(tamamlanan / toplam)
+
     if matris_verileri:
       df_sonuc = pd.DataFrame(matris_verileri)
-      df_sonuc["Sinyal Derecesi"] = df_sonuc.apply(lambda r: f"🟢 AL" if r.HamKarar=="AL" else (f"🔴 SAT" if r.HamKarar=="SAT" else "🟡 TUT"), axis=1)
-      st.session_state.tarama_sonucu = df_sonuc.sort_values(by=["HamKarar", "Puan"], ascending=[True, False])
-      st.success("Tarama Tamamlandı!")
+
+      al_grubu = df_sonuc[df_sonuc["HamKarar"] == "AL"].sort_values(by="Puan", ascending=False).reset_index(drop=True)
+      sat_grubu = df_sonuc[df_sonuc["HamKarar"] == "SAT"].sort_values(by="Puan", ascending=True).reset_index(drop=True)
+      tut_grubu = df_sonuc[df_sonuc["HamKarar"] == "TUT"].sort_values(by="Puan", ascending=False).reset_index(drop=True)
+
+      final_liste = []
+      for idx, row in al_grubu.iterrows():
+        row["Sinyal Derecesi"] = f"🟢 AL {idx+1}"
+        final_liste.append(row)
+      for idx, row in sat_grubu.iterrows():
+        row["Sinyal Derecesi"] = f"🔴 SAT {idx+1}"
+        final_liste.append(row)
+      for idx, row in tut_grubu.iterrows():
+        row["Sinyal Derecesi"] = f"🟡 TUT"
+        final_liste.append(row)
+
+      df_final = pd.DataFrame(final_liste)
+      # İDEAL ALIM VE İDEAL SATIŞ KOLONLARI GERİ GETİRİLDİ
+      df_final = df_final[["Sinyal Derecesi", "Hisse", "Son Fiyat (TL)", "RSI", "İdeal Alım", "İdeal Satış", "Puan"]]
+      
+      st.session_state.tarama_sonucu = df_final
+      st.success("Tarama ve Dereceli Sıralama Tamamlandı!")
+    else:
+      st.warning("Tarama sırasında yeterli veri alınamadı.")
 
   if "tarama_sonucu" in st.session_state:
-    st.dataframe(st.session_state.tarama_sonucu[["Sinyal Derecesi", "Hisse", "Son Fiyat (TL)", "RSI", "Puan"]], use_container_width=True, hide_index=True)
+    df_gosterim = st.session_state.tarama_sonucu
+    st.dataframe(
+        df_gosterim.style.format({
+            "Son Fiyat (TL)": "{:.2f} TL",
+            "RSI": "{:.1f}",
+            "İdeal Alım": "{:.2f} TL",
+            "İdeal Satış": "{:.2f} TL",
+        }),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    # --- HIZLI İŞLEM (AL/SAT) PANELİ GERİ GETİRİLDİ ---
+    st.markdown("---")
+    st.subheader(f"⚡ Hızlı İşlem Paneli ({secilen_kullanici} - Aktif Bakiye: {aktif_profil['nakit']:,.2f} TL)")
+    st.markdown("Yukarıdaki matriste gördüğün hisselerden dilediğini seçerek bu ekrandan çıkmadan anında işlem yapabilirsin.")
+
+    with st.form("hizli_islem_formu"):
+      col_h1, col_h2, col_h3, col_h4 = st.columns(4)
+      with col_h1:
+        hizli_hisse = st.selectbox("Hisse Seçin", df_gosterim["Hisse"].tolist())
+      with col_h2:
+        hizli_tip = st.selectbox("İşlem Tipi", ["ALIŞ", "SATIŞ"])
+      with col_h3:
+        hizli_lot = st.number_input("Lot Miktarı", min_value=1, value=1000, step=100)
+      with col_h4:
+        eslesen_satir = df_gosterim[df_gosterim["Hisse"] == hizli_hisse]
+        varsayilan_fiyat = float(eslesen_satir["Son Fiyat (TL)"].values[0]) if not eslesen_satir.empty else 10.0
+        hizli_fiyat = st.number_input("Birim Fiyat (TL)", min_value=0.01, value=varsayilan_fiyat, step=0.05, format="%.2f")
+
+      hizli_onay = st.form_submit_button("🚀 Hızlı Emri Gerçekleştir ve Kaydet")
+
+      if hizli_onay:
+        hizli_toplam_tutar = hizli_lot * hizli_fiyat
+        zaman_str = datetime.datetime.now(TZ_TR).strftime("%d.%m.%Y %H:%M:%S")
+
+        portfoy_durumu_hizli = {}
+        for isl in aktif_profil["portfoy_hareketleri"]:
+          hh = isl["Hisse"]
+          if hh not in portfoy_durumu_hizli:
+            portfoy_durumu_hizli[hh] = 0
+          if isl["Tip"] == "ALIŞ":
+            portfoy_durumu_hizli[hh] += isl["Miktar"]
+          elif isl["Tip"] == "SATIŞ":
+            portfoy_durumu_hizli[hh] -= isl["Miktar"]
+
+        if hizli_tip == "ALIŞ":
+          if aktif_profil["nakit"] >= hizli_toplam_tutar:
+            aktif_profil["nakit"] -= hizli_toplam_tutar
+            aktif_profil["portfoy_hareketleri"].append({
+                "Zaman": zaman_str, "Hisse": hizli_hisse, "Tip": "ALIŞ",
+                "Miktar": hizli_lot, "Fiyat": hizli_fiyat, "Tutar": hizli_toplam_tutar,
+            })
+            try:
+              requests.post(WEBHOOK_URL, json={"zaman": zaman_str, "kullanici": secilen_kullanici, "hisse": hizli_hisse, "islem_turu": "ALIŞ", "lot": hizli_lot, "fiyat": hizli_fiyat, "toplam_tutar": hizli_toplam_tutar}, timeout=15)
+            except:
+              pass
+            st.success(f"✅ {hizli_hisse} için {hizli_lot} lot alış gerçekleştirildi ({secilen_kullanici})!")
+            st.rerun()
+          else:
+            st.error("❌ Yetersiz Nakit Bakiye!")
+
+        elif hizli_tip == "SATIŞ":
+          sahip_olunan_lot = portfoy_durumu_hizli.get(hizli_hisse, 0)
+          if sahip_olunan_lot >= hizli_lot:
+            aktif_profil["nakit"] += hizli_toplam_tutar
+            aktif_profil["portfoy_hareketleri"].append({
+                "Zaman": zaman_str, "Hisse": hizli_hisse, "Tip": "SATIŞ",
+                "Miktar": hizli_lot, "Fiyat": hizli_fiyat, "Tutar": hizli_toplam_tutar,
+            })
+            try:
+              requests.post(WEBHOOK_URL, json={"zaman": zaman_str, "kullanici": secilen_kullanici, "hisse": hizli_hisse, "islem_turu": "SATIŞ", "lot": hizli_lot, "fiyat": hizli_fiyat, "toplam_tutar": hizli_toplam_tutar}, timeout=15)
+            except:
+              pass
+            st.success(f"✅ {hizli_hisse} için {hizli_lot} lot satış gerçekleştirildi ({secilen_kullanici})!")
+            st.rerun()
+          else:
+            st.error(f"❌ Portföyünüzde yeterli {hizli_hisse} yok! (Mevcut: {sahip_olunan_lot} lot)")
+
 
 with tab_portfoy:
-  st.subheader(f"💼 Sanal Portföy ({secilen_kullanici})")
+  st.subheader(f"💼 Sanal Portföy, Akıllı Radar & Tarihsel Serüven ({secilen_kullanici})")
+  st.markdown("Başlangıç sermayeniz **1.000.000 TL**'dir. Nakitleriniz günlük **%0,12 repo faizi** ile nemalanır. Yaptığınız işlemler hem portföyünüze yansır hem de **Webhook** ile Google E-Tablo arşiviyle senkronize edilir.")
+
   portfoy_durumu = {}
   toplam_varlik_degeri = 0
+  hisse_degeri_toplam = 0
+  doviz_degeri_toplam = 0
+  altin_gumus_degeri_toplam = 0
+
   for islem in aktif_profil["portfoy_hareketleri"]:
-    h, tip, lot, fiyat = islem["Hisse"], islem["Tip"], islem["Miktar"], islem["Fiyat"]
-    if h not in portfoy_durumu: portfoy_durumu[h] = {"lot": 0, "maliyet": 0}
+    h = islem["Hisse"]
+    tip = islem["Tip"]
+    lot = islem["Miktar"]
+    fiyat = islem["Fiyat"]
+
+    if h not in portfoy_durumu:
+      portfoy_durumu[h] = {"lot": 0, "maliyet_harcama": 0}
+
     if tip == "ALIŞ":
       portfoy_durumu[h]["lot"] += lot
-      portfoy_durumu[h]["maliyet"] += lot * fiyat
+      portfoy_durumu[h]["maliyet_harcama"] += lot * fiyat
     elif tip == "SATIŞ":
       portfoy_durumu[h]["lot"] -= lot
-      if portfoy_durumu[h]["lot"] > 0: portfoy_durumu[h]["maliyet"] -= (portfoy_durumu[h]["maliyet"] * (lot / (portfoy_durumu[h]["lot"] + lot)))
-      else: portfoy_durumu[h]["maliyet"] = 0
+      if portfoy_durumu[h]["lot"] > 0:
+        portfoy_durumu[h]["maliyet_harcama"] -= (portfoy_durumu[h]["maliyet_harcama"] * (lot / (portfoy_durumu[h]["lot"] + lot)))
+      else:
+        portfoy_durumu[h]["maliyet_harcama"] = 0
 
   aktif_pozisyonlar = []
   for h, veri in portfoy_durumu.items():
     if veri["lot"] > 0:
-      guncel_fiyat = alternatif_fiyat_cek(h) if h in alternatif_varliklar else motor_hisse_anlik_fiyat(h)
-      if not guncel_fiyat: guncel_fiyat = veri["maliyet"] / veri["lot"]
+      if h in alternatif_varliklar:
+        guncel_fiyat = alternatif_fiyat_cek(h)
+      else:
+        df_p = veri_cek_ve_hazirla(h)
+        guncel_fiyat = df_p["Kapanis"].iloc[-1] if (df_p is not None and not df_p.empty) else (veri["maliyet_harcama"] / veri["lot"])
+
       piyasa_degeri = veri["lot"] * guncel_fiyat
+      maliyet = veri["maliyet_harcama"]
+      kar_zarar_tl = piyasa_degeri - maliyet
+      kar_zarar_yuzde = (kar_zarar_tl / maliyet * 100) if maliyet > 0 else 0
+
       toplam_varlik_degeri += piyasa_degeri
-      aktif_pozisyonlar.append({"Varlık": h, "Lot": veri["lot"], "Maliyet": veri["maliyet"], "Güncel Değer": piyasa_degeri, "K/Z": piyasa_degeri - veri["maliyet"]})
+
+      if h in ["USD/TRY", "EUR/TRY", "GBP/TRY"]:
+        doviz_degeri_toplam += piyasa_degeri
+      elif h in ["Gram Altın (TL)", "Gram Gümüş (TL)"]:
+        altin_gumus_degeri_toplam += piyasa_degeri
+      else:
+        hisse_degeri_toplam += piyasa_degeri
+
+      aktif_pozisyonlar.append({
+          "Varlık / Hisse": h,
+          "Net Miktar / Lot": veri["lot"],
+          "Toplam Maliyet (TL)": maliyet,
+          "Güncel Değer (TL)": piyasa_degeri,
+          "Kâr / Zarar (TL)": kar_zarar_tl,
+          "Kâr / Zarar (%)": kar_zarar_yuzde,
+      })
 
   toplam_toplam = aktif_profil["nakit"] + toplam_varlik_degeri
-  c1, c2, c3 = st.columns(3)
+  toplam_kar_zarar = toplam_toplam - 1000000.0
+  toplam_kar_zarar_yuzde = (toplam_kar_zarar / 1000000.0) * 100
+
+  # GEÇMİŞ GÜNLÜK VERİLERİ (GRAFİKLER İÇİN) GERİ GETİRİLDİ
+  bugun_tarih = str(datetime.datetime.now(TZ_TR).date())
+  mevcut_gunluk = aktif_profil["gunluk_gecmis"]
+  if not mevcut_gunluk or mevcut_gunluk[-1]["Tarih"] != bugun_tarih:
+    mevcut_gunluk.append({
+        "Tarih": bugun_tarih,
+        "Toplam Varlık": toplam_toplam,
+        "Nakit": aktif_profil["nakit"],
+        "Hisse": hisse_degeri_toplam,
+        "Döviz": doviz_degeri_toplam,
+        "Altın & Gümüş": altin_gumus_degeri_toplam,
+    })
+  else:
+    mevcut_gunluk[-1]["Toplam Varlık"] = toplam_toplam
+    mevcut_gunluk[-1]["Nakit"] = aktif_profil["nakit"]
+    mevcut_gunluk[-1]["Hisse"] = hisse_degeri_toplam
+    mevcut_gunluk[-1]["Döviz"] = doviz_degeri_toplam
+    mevcut_gunluk[-1]["Altın & Gümüş"] = altin_gumus_degeri_toplam
+
+  c1, c2, c3, c4 = st.columns(4)
   c1.metric("Toplam Varlık", f"{toplam_toplam:,.2f} TL")
-  c2.metric("Nakit Bakiye", f"{aktif_profil['nakit']:,.2f} TL")
-  c3.metric("K/Z Durumu", f"{toplam_toplam - 1000000:,.2f} TL")
+  c2.metric("Nakit (Repo Nemalı)", f"{aktif_profil['nakit']:,.2f} TL")
+  c3.metric("Varlıklar Değeri", f"{toplam_varlik_degeri:,.2f} TL")
+  c4.metric(
+      "Toplam Kâr / Zarar",
+      f"{toplam_kar_zarar:,.2f} TL",
+      f"{toplam_kar_zarar_yuzde:.2f}%",
+  )
 
-  if aktif_pozisyonlar:
-    st.dataframe(pd.DataFrame(aktif_pozisyonlar).style.format({"Lot": "{:,}", "Maliyet": "{:,.2f}", "Güncel Değer": "{:,.2f}", "K/Z": "{:,.2f}"}), use_container_width=True)
+  st.markdown("---")
 
+  # PİYASA RADARI GERİ GETİRİLDİ
+  with st.expander("🎯 Anlık Piyasa Radarı: En Güçlü AL Fırsatları & Portföy Risk Alarmları", expanded=True):
+    if st.button("📡 Radarı Çalıştır ve Fırsatları Listele"):
+      with st.spinner("Piyasa ve portföy taranıyor..."):
+        radar_sonuclari = []
+        for h_kodu in bist_hisseler[:30]:
+          df_r = veri_cek_ve_hazirla(h_kodu)
+          if df_r is not None and not df_r.empty and len(df_r) > 30:
+            try:
+              r_karar, r_puan, _, r_fiyat, r_rsi, _, _, _, _ = akilli_analiz_hesapla(df_r, [], [])
+              radar_sonuclari.append({"Hisse": h_kodu, "Puan": r_puan, "Karar": r_karar, "Fiyat": r_fiyat, "RSI": r_rsi})
+            except:
+              pass
+
+        if radar_sonuclari:
+          df_rad = pd.DataFrame(radar_sonuclari)
+          en_iyi_al = df_rad[df_rad["Karar"] == "AL"].sort_values(by="Puan", ascending=False).head(5)
+
+          col_rad1, col_rad2 = st.columns(2)
+          with col_rad1:
+            st.markdown("### 🟢 En Güçlü AL Fırsatları")
+            if not en_iyi_al.empty:
+              for idx, row in en_iyi_al.reset_index(drop=True).iterrows():
+                st.markdown(f"**{idx+1}. {row['Hisse']}** — Fiyat: {row['Fiyat']:.2f} TL | RSI: {row['RSI']:.1f}")
+            else:
+              st.info("Güçlü AL sinyali bulunamadı.")
+
+          with col_rad2:
+            st.markdown("### 🔴 Riskli / SAT Pozisyonlar")
+            aktif_hisseler_listesi = [k for k, v in portfoy_durumu.items() if v["lot"] > 0 and k not in alternatif_varliklar]
+            riskli_varliklar = []
+            for ah in aktif_hisseler_listesi:
+              eslesen = df_rad[df_rad["Hisse"] == ah]
+              if not eslesen.empty:
+                if eslesen.iloc[0]["Karar"] == "SAT":
+                  riskli_varliklar.append(f"⚠️ **{ah}** — SAT sinyali veriyor!")
+            if riskli_varliklar:
+              for r in riskli_varliklar: st.markdown(r)
+            else:
+              st.success("Portföyünüzde riskli varlık bulunmuyor.")
+
+  st.markdown("---")
+
+  # GRAFİKLER GERİ GETİRİLDİ
+  col_grafik1, col_grafik2 = st.columns(2)
+  with col_grafik1:
+    st.subheader("📈 Tarihsel Varlık Eğrisi")
+    if len(mevcut_gunluk) > 0:
+      df_gecmis_varlik = pd.DataFrame(mevcut_gunluk).set_index("Tarih")
+      st.line_chart(df_gecmis_varlik[["Toplam Varlık"]])
+    else:
+      st.info("Veri oluşuyor...")
+
+  with col_grafik2:
+    st.subheader("🥧 Varlık Sınıfı Kırılımı (TL)")
+    kirilim_df = pd.DataFrame({
+        "Varlık Sınıfı": ["Nakit / Repo", "BİST Hisseler", "Döviz", "Altın & Gümüş"],
+        "Tutar (TL)": [aktif_profil["nakit"], hisse_degeri_toplam, doviz_degeri_toplam, altin_gumus_degeri_toplam],
+    }).set_index("Varlık Sınıfı")
+    st.bar_chart(kirilim_df)
+
+  st.markdown("---")
+  col_islem1, col_islem2 = st.columns(2)
+
+  # MANUEL EMİR GİRİŞ FORMU GERİ GETİRİLDİ
+  with col_islem1:
+    st.subheader("📝 Emir Girişi (Alış / Satış)")
+    secilen_varlik_gecici = st.selectbox("Varlık / Hisse Seçin", tum_islem_varliklari, key="secilen_varlik_input")
+
+    if secilen_varlik_gecici in alternatif_varliklar:
+      otomatik_fiyat = alternatif_fiyat_cek(secilen_varlik_gecici)
+    else:
+      df_gecici = veri_cek_ve_hazirla(secilen_varlik_gecici)
+      otomatik_fiyat = float(df_gecici["Kapanis"].iloc[-1]) if (df_gecici is not None and not df_gecici.empty) else 10.0
+
+    with st.form("emir_formu"):
+      islem_hisse = secilen_varlik_gecici
+      islem_tipi = st.selectbox("İşlem Tipi", ["ALIŞ", "SATIŞ"])
+      islem_miktar = st.number_input("Miktar / Lot", min_value=1, value=1000, step=100)
+      islem_fiyat = st.number_input("Birim Fiyat (TL) [Canlı]", min_value=0.01, value=float(otomatik_fiyat), step=0.05, format="%.2f")
+
+      islem_onay = st.form_submit_button("Emri Gerçekleştir ve Tabloya Kaydet")
+      if islem_onay:
+        toplam_tutar = islem_miktar * islem_fiyat
+        zaman_str = datetime.datetime.now(TZ_TR).strftime("%d.%m.%Y %H:%M:%S")
+
+        if islem_tipi == "ALIŞ":
+          if aktif_profil["nakit"] >= toplam_tutar:
+            aktif_profil["nakit"] -= toplam_tutar
+            aktif_profil["portfoy_hareketleri"].append({
+                "Zaman": zaman_str, "Hisse": islem_hisse, "Tip": "ALIŞ",
+                "Miktar": islem_miktar, "Fiyat": islem_fiyat, "Tutar": toplam_tutar,
+            })
+            try:
+              requests.post(WEBHOOK_URL, json={"zaman": zaman_str, "kullanici": secilen_kullanici, "hisse": islem_hisse, "islem_turu": "ALIŞ", "lot": islem_miktar, "fiyat": islem_fiyat, "toplam_tutar": toplam_tutar}, timeout=15)
+            except: pass
+            st.success(f"✅ {islem_hisse} alış işlemi başarılı!")
+            st.rerun()
+          else: st.error("❌ Yetersiz Nakit Bakiye!")
+        elif islem_tipi == "SATIŞ":
+          mevcut_lot = portfoy_durumu.get(islem_hisse, {}).get("lot", 0)
+          if mevcut_lot >= islem_miktar:
+            aktif_profil["nakit"] += toplam_tutar
+            aktif_profil["portfoy_hareketleri"].append({
+                "Zaman": zaman_str, "Hisse": islem_hisse, "Tip": "SATIŞ",
+                "Miktar": islem_miktar, "Fiyat": islem_fiyat, "Tutar": toplam_tutar,
+            })
+            try:
+              requests.post(WEBHOOK_URL, json={"zaman": zaman_str, "kullanici": secilen_kullanici, "hisse": islem_hisse, "islem_turu": "SATIŞ", "lot": islem_miktar, "fiyat": islem_fiyat, "toplam_tutar": toplam_tutar}, timeout=15)
+            except: pass
+            st.success(f"✅ {islem_hisse} satış işlemi başarılı!")
+            st.rerun()
+          else: st.error(f"❌ Yetersiz {islem_hisse} lotu!")
+
+  with col_islem2:
+    st.subheader("📊 Aktif Varlık Dağılımınız")
+    if aktif_pozisyonlar:
+      df_aktif = pd.DataFrame(aktif_pozisyonlar)
+      st.dataframe(
+          df_aktif.style.format({
+              "Net Miktar / Lot": "{:,}",
+              "Toplam Maliyet (TL)": "{:,.2f} TL",
+              "Güncel Değer (TL)": "{:,.2f} TL",
+              "Kâr / Zarar (TL)": "{:,.2f} TL",
+              "Kâr / Zarar (%)": "{:.2f}%",
+          }),
+          use_container_width=True,
+          hide_index=True,
+      )
+    else:
+      st.info("Portföyünüzde şu an aktif varlık yok, nakit durumundasınız.")
+
+  # GEÇMİŞ İŞLEM GÜNLÜĞÜ GERİ GETİRİLDİ
+  st.markdown("---")
+  st.subheader("📜 Geçmiş İşlem Günlüğünüz")
+  if aktif_profil["portfoy_hareketleri"]:
+    df_gecmis = pd.DataFrame(aktif_profil["portfoy_hareketleri"])
+    st.dataframe(
+        df_gecmis.style.format({
+            "Miktar": "{:,}",
+            "Fiyat": "{:.2f} TL",
+            "Tutar": "{:,.2f} TL",
+        }),
+        use_container_width=True,
+        hide_index=True,
+    )
+  else:
+    st.write("Henüz işlem geçmişiniz yok.")
+
+  if st.button("🔄 Portföyü Sıfırla (Arşivi Temizle & 1M TL'ye Dön)"):
+    st.session_state.kullanicilar = {
+        secilen_kullanici: {
+            "nakit": 1000000.0,
+            "portfoy_hareketleri": [],
+            "gunluk_gecmis": [],
+            "son_hesap_tarihi": str(datetime.datetime.now(TZ_TR).date()),
+        }
+    }
+    st.rerun()
+
+# LİDERLİK DETAYLI METRİKLERİ GERİ GETİRİLDİ
 with tab_liderlik:
-  st.subheader("🏆 Liderlik Matrisi")
+  st.subheader("🏆 Yatırımcılar Liderlik & Performans Matrisi")
+  st.markdown("Sistemdeki tüm kullanıcıların başlangıç sermayeleri, kalan repo nakitleri ve canlı varlık değerleri listelenmektedir.")
+
   liderlik_verileri = []
-  for k_adi, prof in st.session_state.kullanicilar.items():
-      liderlik_verileri.append({"Trader": k_adi, "Nakit": prof["nakit"]})
-  st.dataframe(pd.DataFrame(liderlik_verileri), use_container_width=True)
+  for kullanici_adi, prof in st.session_state.kullanicilar.items():
+    p_durum = {}
+    hisse_val = 0
+    for isl in prof["portfoy_hareketleri"]:
+      h_k = isl["Hisse"]
+      t_tip = isl["Tip"]
+      m_mik = isl["Miktar"]
+      f_fiy = isl["Fiyat"]
+      if h_k not in p_durum:
+        p_durum[h_k] = {"lot": 0, "maliyet": 0}
+      if t_tip == "ALIŞ":
+        p_durum[h_k]["lot"] += m_mik
+        p_durum[h_k]["maliyet"] += m_mik * f_fiy
+      elif t_tip == "SATIŞ":
+        p_durum[h_k]["lot"] -= m_mik
 
+    for h_k, v_info in p_durum.items():
+      if v_info["lot"] > 0:
+        if h_k in alternatif_varliklar:
+          g_f = alternatif_fiyat_cek(h_k)
+        else:
+          df_l = veri_cek_ve_hazirla(h_k)
+          g_f = df_l["Kapanis"].iloc[-1] if (df_l is not None and not df_l.empty) else (v_info["maliyet"] / v_info["lot"])
+        hisse_val += v_info["lot"] * g_f
 
-# --- 5. SEKME: OTOMATİK VE ZİNCİR EMİRLER ---
+    top_varlik = prof["nakit"] + hisse_val
+    k_z_tl = top_varlik - 1000000.0
+    k_z_yuzde = (k_z_tl / 1000000.0) * 100
+
+    liderlik_verileri.append({
+        "Trader": kullanici_adi,
+        "Toplam Varlık (TL)": top_varlik,
+        "Kalan Nakit (TL)": prof["nakit"],
+        "Varlıklar Değeri (TL)": hisse_val,
+        "Net Kâr / Zarar (TL)": k_z_tl,
+        "Performans (%)": k_z_yuzde,
+    })
+
+  if liderlik_verileri:
+    df_lider = pd.DataFrame(liderlik_verileri).sort_values(by="Toplam Varlık (TL)", ascending=False)
+    st.dataframe(
+        df_lider.style.format({
+            "Toplam Varlık (TL)": "{:,.2f} TL",
+            "Kalan Nakit (TL)": "{:,.2f} TL",
+            "Varlıklar Değeri (TL)": "{:,.2f} TL",
+            "Net Kâr / Zarar (TL)": "{:,.2f} TL",
+            "Performans (%)": "{:.2f}%",
+        }),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+# --- YENİ EKLENEN SEKME: OTOMATİK VE ZİNCİR EMİRLER ---
 with tab_zincir:
   st.subheader("⚙️ Otomatik Alım-Satım & Zincir Emir Modülü")
   st.markdown("Bu ekrandan hedef fiyatları belirleyerek tekli veya **birbirine bağlı zincir emirler** kurabilirsiniz. Tetikleyici Motor açık olduğu sürece sistem piyasayı otomatik tarar ve şartlar oluştuğunda işlemleri gerçekleştirir.")
 
   col_motor, col_bilgi = st.columns([1, 2])
   with col_motor:
-      # SADECE BU BUTON AÇIKKEN OTOMATİK TARAMA YAPAR
       motor_aktif = st.toggle("🚀 Emir Motorunu Başlat (Sürekli Tarama)", value=False)
   with col_bilgi:
       if motor_aktif:
@@ -382,7 +926,6 @@ with tab_zincir:
       st.markdown("**2. Adım: Zincir Halka Emirler** (Ana emir gerçekleşirse sırayla aktif olurlar. İstemiyorsanız 0 bırakın)")
       
       zincir_adimlari = []
-      # 10 Slot Zincir Döngüsü
       for i in range(1, 11):
           with st.expander(f"Zincir Adım {i} (Opsiyonel)"):
               zc1, zc2, zc3 = st.columns(3)
@@ -397,7 +940,6 @@ with tab_zincir:
       if z_kaydet:
           ana_emir_id = str(uuid.uuid4())[:8]
           
-          # Ana Emri Ekle
           st.session_state.zincir_emirler[secilen_kullanici].append({
               "id": ana_emir_id,
               "bagli_id": None,
@@ -408,7 +950,6 @@ with tab_zincir:
               "durum": "BEKLİYOR"
           })
           
-          # Geçerli Zincir Emirleri Ekle (Fiyat ve Lot 0'dan büyükse)
           onceki_id = ana_emir_id
           eklenen_zincir_sayisi = 0
           for adim in zincir_adimlari:
@@ -442,9 +983,7 @@ with tab_zincir:
   else:
       st.info("Şu an havuzunuzda bekleyen hiçbir otomatik/şartlı emir yok.")
 
-  # ==========================================
-  # TETİKLEYİCİ MOTOR MANTIĞI (AUTO-REFRESH)
-  # ==========================================
+  # OTOMATİK TARAMA MOTORU
   if motor_aktif:
       islem_oldu_mu = False
       zaman_str = datetime.datetime.now(TZ_TR).strftime("%d.%m.%Y %H:%M:%S")
@@ -456,15 +995,12 @@ with tab_zincir:
           return False
 
       for emir in kullanici_emirleri:
-          # Eğer emir Pasifse ve bağlı olduğu üst emir gerçekleşmişse onu Bekliyor'a çek
           if emir["durum"] == "PASİF (Önceki Bekleniyor)":
               if emir_gerceklesti_mi(emir["bagli_id"]):
                   emir["durum"] = "BEKLİYOR"
                   islem_oldu_mu = True
 
-          # Eğer emir BEKLİYOR aşamasındaysa piyasaya bak
           if emir["durum"] == "BEKLİYOR":
-              # Canlı fiyatı çek
               if emir["hisse"] in alternatif_varliklar:
                   anlik_f = alternatif_fiyat_cek(emir["hisse"])
               else:
@@ -483,7 +1019,6 @@ with tab_zincir:
                           islem_oldu_mu = True
                           
                   elif emir["tip"] == "SATIŞ" and anlik_f >= emir["fiyat"]:
-                      # Portföydeki lotu kontrol et
                       sahip_olunan = sum([i["Miktar"] for i in aktif_profil["portfoy_hareketleri"] if i["Hisse"] == emir["hisse"] and i["Tip"] == "ALIŞ"]) - \
                                      sum([i["Miktar"] for i in aktif_profil["portfoy_hareketleri"] if i["Hisse"] == emir["hisse"] and i["Tip"] == "SATIŞ"])
                       if sahip_olunan >= emir["lot"]:
@@ -493,7 +1028,6 @@ with tab_zincir:
                           emir["durum"] = "İPTAL (Yetersiz Lot)"
                           islem_oldu_mu = True
 
-                  # Şartlar uyduysa işlemi terminale ve E-Tabloya kaydet
                   if tetiklendi:
                       aktif_profil["portfoy_hareketleri"].append({
                           "Zaman": zaman_str, "Hisse": emir["hisse"], "Tip": emir["tip"],
@@ -505,6 +1039,6 @@ with tab_zincir:
                           requests.post(WEBHOOK_URL, json={"zaman": zaman_str, "kullanici": secilen_kullanici, "hisse": emir["hisse"], "islem_turu": emir["tip"], "lot": emir["lot"], "fiyat": anlik_f, "toplam_tutar": toplam_tutar}, timeout=5)
                       except: pass
 
-      # Motorun Streamlit arayüzünü kilitlememesi ve sürekli dönmesi için 30 saniye uyutup sayfayı yeniliyoruz.
+      # Motorun Streamlit arayüzünü kilitlememesi için 30 saniye uyutup sayfayı yeniliyoruz.
       time.sleep(30)
       st.rerun()
