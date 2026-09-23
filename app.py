@@ -516,39 +516,59 @@ with tab_matris:
         hide_index=True,
     )
 
-    # --- HIZLI İŞLEM (AL/SAT) PANELİ GERİ GETİRİLDİ ---
+    # --- HIZLI İŞLEM (AL/SAT) PANELİ (YENİ AKILLI FİLTRELİ HALİ) ---
     st.markdown("---")
     st.subheader(f"⚡ Hızlı İşlem Paneli ({secilen_kullanici} - Aktif Bakiye: {aktif_profil['nakit']:,.2f} TL)")
     st.markdown("Yukarıdaki matriste gördüğün hisselerden dilediğini seçerek bu ekrandan çıkmadan anında işlem yapabilirsin.")
 
-    with st.form("hizli_islem_formu"):
-      col_h1, col_h2, col_h3, col_h4 = st.columns(4)
-      with col_h1:
+    # 1. Portföydeki aktif hisseleri önceden hesaplıyoruz
+    portfoy_durumu_hizli = {}
+    for isl in aktif_profil["portfoy_hareketleri"]:
+      hh = isl["Hisse"]
+      if hh not in portfoy_durumu_hizli:
+        portfoy_durumu_hizli[hh] = 0
+      if isl["Tip"] == "ALIŞ":
+        portfoy_durumu_hizli[hh] += isl["Miktar"]
+      elif isl["Tip"] == "SATIŞ":
+        portfoy_durumu_hizli[hh] -= isl["Miktar"]
+
+    sahip_olunan_hisseler = [h for h, lot in portfoy_durumu_hizli.items() if lot > 0]
+
+    # 2. Form yapısını kaldırdık (Seçimlerin anında güncellenmesi için)
+    col_h1, col_h2, col_h3, col_h4 = st.columns(4)
+    
+    with col_h2:
+      hizli_tip = st.selectbox("İşlem Tipi", ["ALIŞ", "SATIŞ"])
+      
+    with col_h1:
+      if hizli_tip == "SATIŞ":
+        if sahip_olunan_hisseler:
+          hizli_hisse = st.selectbox("Hisse Seçin", sahip_olunan_hisseler)
+        else:
+          hizli_hisse = st.selectbox("Hisse Seçin", ["Portföy Boş"], disabled=True)
+      else:
         hizli_hisse = st.selectbox("Hisse Seçin", df_gosterim["Hisse"].tolist())
-      with col_h2:
-        hizli_tip = st.selectbox("İşlem Tipi", ["ALIŞ", "SATIŞ"])
-      with col_h3:
-        hizli_lot = st.number_input("Lot Miktarı", min_value=1, value=1000, step=100)
-      with col_h4:
+      
+    with col_h3:
+      hizli_lot = st.number_input("Lot Miktarı", min_value=1, value=1000, step=100)
+      
+    with col_h4:
+      if hizli_hisse != "Portföy Boş":
         eslesen_satir = df_gosterim[df_gosterim["Hisse"] == hizli_hisse]
         varsayilan_fiyat = float(eslesen_satir["Son Fiyat (TL)"].values[0]) if not eslesen_satir.empty else 10.0
-        hizli_fiyat = st.number_input("Birim Fiyat (TL)", min_value=0.01, value=varsayilan_fiyat, step=0.05, format="%.2f")
+      else:
+        varsayilan_fiyat = 0.0
+      hizli_fiyat = st.number_input("Birim Fiyat (TL)", min_value=0.01, value=varsayilan_fiyat, step=0.05, format="%.2f")
 
-      hizli_onay = st.form_submit_button("🚀 Hızlı Emri Gerçekleştir ve Kaydet")
+    st.markdown("<br>", unsafe_allow_html=True)
+    hizli_onay = st.button("🚀 Hızlı Emri Gerçekleştir ve Kaydet", use_container_width=True)
 
-      if hizli_onay:
+    if hizli_onay:
+      if hizli_hisse == "Portföy Boş":
+        st.error("❌ Satış yapabileceğiniz bir hisse bulunmuyor!")
+      else:
         hizli_toplam_tutar = hizli_lot * hizli_fiyat
         zaman_str = datetime.datetime.now(TZ_TR).strftime("%d.%m.%Y %H:%M:%S")
-
-        portfoy_durumu_hizli = {}
-        for isl in aktif_profil["portfoy_hareketleri"]:
-          hh = isl["Hisse"]
-          if hh not in portfoy_durumu_hizli:
-            portfoy_durumu_hizli[hh] = 0
-          if isl["Tip"] == "ALIŞ":
-            portfoy_durumu_hizli[hh] += isl["Miktar"]
-          elif isl["Tip"] == "SATIŞ":
-            portfoy_durumu_hizli[hh] -= isl["Miktar"]
 
         if hizli_tip == "ALIŞ":
           if aktif_profil["nakit"] >= hizli_toplam_tutar:
@@ -559,9 +579,9 @@ with tab_matris:
             })
             try:
               requests.post(WEBHOOK_URL, json={"zaman": zaman_str, "kullanici": secilen_kullanici, "hisse": hizli_hisse, "islem_turu": "ALIŞ", "lot": hizli_lot, "fiyat": hizli_fiyat, "toplam_tutar": hizli_toplam_tutar}, timeout=15)
-            except:
-              pass
+            except: pass
             st.success(f"✅ {hizli_hisse} için {hizli_lot} lot alış gerçekleştirildi ({secilen_kullanici})!")
+            time.sleep(1)
             st.rerun()
           else:
             st.error("❌ Yetersiz Nakit Bakiye!")
@@ -576,9 +596,9 @@ with tab_matris:
             })
             try:
               requests.post(WEBHOOK_URL, json={"zaman": zaman_str, "kullanici": secilen_kullanici, "hisse": hizli_hisse, "islem_turu": "SATIŞ", "lot": hizli_lot, "fiyat": hizli_fiyat, "toplam_tutar": hizli_toplam_tutar}, timeout=15)
-            except:
-              pass
+            except: pass
             st.success(f"✅ {hizli_hisse} için {hizli_lot} lot satış gerçekleştirildi ({secilen_kullanici})!")
+            time.sleep(1)
             st.rerun()
           else:
             st.error(f"❌ Portföyünüzde yeterli {hizli_hisse} yok! (Mevcut: {sahip_olunan_lot} lot)")
@@ -649,7 +669,7 @@ with tab_portfoy:
   toplam_kar_zarar = toplam_toplam - 1000000.0
   toplam_kar_zarar_yuzde = (toplam_kar_zarar / 1000000.0) * 100
 
-  # GEÇMİŞ GÜNLÜK VERİLERİ (GRAFİKLER İÇİN) GERİ GETİRİLDİ
+  # GEÇMİŞ GÜNLÜK VERİLERİ (GRAFİKLER İÇİN)
   bugun_tarih = str(datetime.datetime.now(TZ_TR).date())
   mevcut_gunluk = aktif_profil["gunluk_gecmis"]
   if not mevcut_gunluk or mevcut_gunluk[-1]["Tarih"] != bugun_tarih:
@@ -680,7 +700,7 @@ with tab_portfoy:
 
   st.markdown("---")
 
-  # PİYASA RADARI GERİ GETİRİLDİ
+  # PİYASA RADARI
   with st.expander("🎯 Anlık Piyasa Radarı: En Güçlü AL Fırsatları & Portföy Risk Alarmları", expanded=True):
     if st.button("📡 Radarı Çalıştır ve Fırsatları Listele"):
       with st.spinner("Piyasa ve portföy taranıyor..."):
@@ -723,7 +743,7 @@ with tab_portfoy:
 
   st.markdown("---")
 
-  # GRAFİKLER GERİ GETİRİLDİ
+  # GRAFİKLER
   col_grafik1, col_grafik2 = st.columns(2)
   with col_grafik1:
     st.subheader("📈 Tarihsel Varlık Eğrisi")
@@ -744,7 +764,7 @@ with tab_portfoy:
   st.markdown("---")
   col_islem1, col_islem2 = st.columns(2)
 
-  # MANUEL EMİR GİRİŞ FORMU GERİ GETİRİLDİ
+  # MANUEL EMİR GİRİŞ FORMU
   with col_islem1:
     st.subheader("📝 Emir Girişi (Alış / Satış)")
     secilen_varlik_gecici = st.selectbox("Varlık / Hisse Seçin", tum_islem_varliklari, key="secilen_varlik_input")
@@ -812,7 +832,7 @@ with tab_portfoy:
     else:
       st.info("Portföyünüzde şu an aktif varlık yok, nakit durumundasınız.")
 
-  # GEÇMİŞ İŞLEM GÜNLÜĞÜ GERİ GETİRİLDİ
+  # GEÇMİŞ İŞLEM GÜNLÜĞÜ 
   st.markdown("---")
   st.subheader("📜 Geçmiş İşlem Günlüğünüz")
   if aktif_profil["portfoy_hareketleri"]:
@@ -840,7 +860,7 @@ with tab_portfoy:
     }
     st.rerun()
 
-# LİDERLİK DETAYLI METRİKLERİ GERİ GETİRİLDİ
+# LİDERLİK DETAYLI METRİKLERİ
 with tab_liderlik:
   st.subheader("🏆 Yatırımcılar Liderlik & Performans Matrisi")
   st.markdown("Sistemdeki tüm kullanıcıların başlangıç sermayeleri, kalan repo nakitleri ve canlı varlık değerleri listelenmektedir.")
@@ -898,7 +918,7 @@ with tab_liderlik:
         hide_index=True,
     )
 
-# --- YENİ EKLENEN SEKME: OTOMATİK VE ZİNCİR EMİRLER ---
+# --- ZİNCİR EMİRLER SEKME ---
 with tab_zincir:
   st.subheader("⚙️ Otomatik Alım-Satım & Zincir Emir Modülü")
   st.markdown("Bu ekrandan hedef fiyatları belirleyerek tekli veya **birbirine bağlı zincir emirler** kurabilirsiniz. Tetikleyici Motor açık olduğu sürece sistem piyasayı otomatik tarar ve şartlar oluştuğunda işlemleri gerçekleştirir.")
