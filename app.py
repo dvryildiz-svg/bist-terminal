@@ -1,4 +1,4 @@
-import concurrent.futures
+    import concurrent.futures
 import datetime
 import time
 import uuid
@@ -21,7 +21,7 @@ st.set_page_config(
 st.title("🦁 BİST & Çoklu Varlık Profesyonel Fon Yönetim Terminali")
 st.markdown(
     "Tüm BİST Hisseleri Evreni, Sıralı Sinyaller, Gün İçi Fiyat Entegrasyonu,"
-    " Sanal Portföy Grafikleri, Hızlı İşlem Paneli ve **Otomatik Zincir Emir Motoru**."
+    " Sanal Portföy Grafikleri, Akıllı İşlem Panelleri ve **Otomatik Zincir Emir Motoru**."
 )
 
 # GARANTİLİ WEBHOOK URL'NİZ
@@ -495,7 +495,6 @@ with tab_matris:
         final_liste.append(row)
 
       df_final = pd.DataFrame(final_liste)
-      # İDEAL ALIM VE İDEAL SATIŞ KOLONLARI GERİ GETİRİLDİ
       df_final = df_final[["Sinyal Derecesi", "Hisse", "Son Fiyat (TL)", "RSI", "İdeal Alım", "İdeal Satış", "Puan"]]
       
       st.session_state.tarama_sonucu = df_final
@@ -516,12 +515,11 @@ with tab_matris:
         hide_index=True,
     )
 
-    # --- HIZLI İŞLEM (AL/SAT) PANELİ (YENİ AKILLI FİLTRELİ HALİ) ---
+    # --- HIZLI İŞLEM (AL/SAT) PANELİ (AKILLI FİLTRELİ) ---
     st.markdown("---")
     st.subheader(f"⚡ Hızlı İşlem Paneli ({secilen_kullanici} - Aktif Bakiye: {aktif_profil['nakit']:,.2f} TL)")
     st.markdown("Yukarıdaki matriste gördüğün hisselerden dilediğini seçerek bu ekrandan çıkmadan anında işlem yapabilirsin.")
 
-    # 1. Portföydeki aktif hisseleri önceden hesaplıyoruz
     portfoy_durumu_hizli = {}
     for isl in aktif_profil["portfoy_hareketleri"]:
       hh = isl["Hisse"]
@@ -534,7 +532,6 @@ with tab_matris:
 
     sahip_olunan_hisseler = [h for h, lot in portfoy_durumu_hizli.items() if lot > 0]
 
-    # 2. Form yapısını kaldırdık (Seçimlerin anında güncellenmesi için)
     col_h1, col_h2, col_h3, col_h4 = st.columns(4)
     
     with col_h2:
@@ -764,55 +761,73 @@ with tab_portfoy:
   st.markdown("---")
   col_islem1, col_islem2 = st.columns(2)
 
-  # MANUEL EMİR GİRİŞ FORMU
+  # MANUEL EMİR GİRİŞ FORMU (AKILLI FİLTRELİ)
   with col_islem1:
     st.subheader("📝 Emir Girişi (Alış / Satış)")
-    secilen_varlik_gecici = st.selectbox("Varlık / Hisse Seçin", tum_islem_varliklari, key="secilen_varlik_input")
 
-    if secilen_varlik_gecici in alternatif_varliklar:
-      otomatik_fiyat = alternatif_fiyat_cek(secilen_varlik_gecici)
+    islem_tipi = st.selectbox("İşlem Tipi", ["ALIŞ", "SATIŞ"], key="islem_tipi_portfoy")
+
+    if islem_tipi == "SATIŞ":
+        sahip_olunan_varliklar = [h for h, veri in portfoy_durumu.items() if veri["lot"] > 0]
+        if sahip_olunan_varliklar:
+            islem_hisse = st.selectbox("Varlık / Hisse Seçin", sahip_olunan_varliklar, key="secilen_varlik_portfoy")
+        else:
+            islem_hisse = st.selectbox("Varlık / Hisse Seçin", ["Portföy Boş"], disabled=True, key="secilen_varlik_portfoy")
     else:
-      df_gecici = veri_cek_ve_hazirla(secilen_varlik_gecici)
-      otomatik_fiyat = float(df_gecici["Kapanis"].iloc[-1]) if (df_gecici is not None and not df_gecici.empty) else 10.0
+        islem_hisse = st.selectbox("Varlık / Hisse Seçin", tum_islem_varliklari, key="secilen_varlik_portfoy")
 
-    with st.form("emir_formu"):
-      islem_hisse = secilen_varlik_gecici
-      islem_tipi = st.selectbox("İşlem Tipi", ["ALIŞ", "SATIŞ"])
-      islem_miktar = st.number_input("Miktar / Lot", min_value=1, value=1000, step=100)
-      islem_fiyat = st.number_input("Birim Fiyat (TL) [Canlı]", min_value=0.01, value=float(otomatik_fiyat), step=0.05, format="%.2f")
+    if islem_hisse != "Portföy Boş":
+        if islem_hisse in alternatif_varliklar:
+            otomatik_fiyat = alternatif_fiyat_cek(islem_hisse)
+        else:
+            df_gecici = veri_cek_ve_hazirla(islem_hisse)
+            otomatik_fiyat = float(df_gecici["Kapanis"].iloc[-1]) if (df_gecici is not None and not df_gecici.empty) else 10.0
+    else:
+        otomatik_fiyat = 0.0
 
-      islem_onay = st.form_submit_button("Emri Gerçekleştir ve Tabloya Kaydet")
-      if islem_onay:
-        toplam_tutar = islem_miktar * islem_fiyat
-        zaman_str = datetime.datetime.now(TZ_TR).strftime("%d.%m.%Y %H:%M:%S")
+    islem_miktar = st.number_input("Miktar / Lot", min_value=1, value=1000, step=100, key="miktar_portfoy")
+    islem_fiyat = st.number_input("Birim Fiyat (TL) [Canlı]", min_value=0.01, value=float(otomatik_fiyat), step=0.05, format="%.2f", key="fiyat_portfoy")
 
-        if islem_tipi == "ALIŞ":
-          if aktif_profil["nakit"] >= toplam_tutar:
-            aktif_profil["nakit"] -= toplam_tutar
-            aktif_profil["portfoy_hareketleri"].append({
-                "Zaman": zaman_str, "Hisse": islem_hisse, "Tip": "ALIŞ",
-                "Miktar": islem_miktar, "Fiyat": islem_fiyat, "Tutar": toplam_tutar,
-            })
-            try:
-              requests.post(WEBHOOK_URL, json={"zaman": zaman_str, "kullanici": secilen_kullanici, "hisse": islem_hisse, "islem_turu": "ALIŞ", "lot": islem_miktar, "fiyat": islem_fiyat, "toplam_tutar": toplam_tutar}, timeout=15)
-            except: pass
-            st.success(f"✅ {islem_hisse} alış işlemi başarılı!")
-            st.rerun()
-          else: st.error("❌ Yetersiz Nakit Bakiye!")
-        elif islem_tipi == "SATIŞ":
-          mevcut_lot = portfoy_durumu.get(islem_hisse, {}).get("lot", 0)
-          if mevcut_lot >= islem_miktar:
-            aktif_profil["nakit"] += toplam_tutar
-            aktif_profil["portfoy_hareketleri"].append({
-                "Zaman": zaman_str, "Hisse": islem_hisse, "Tip": "SATIŞ",
-                "Miktar": islem_miktar, "Fiyat": islem_fiyat, "Tutar": toplam_tutar,
-            })
-            try:
-              requests.post(WEBHOOK_URL, json={"zaman": zaman_str, "kullanici": secilen_kullanici, "hisse": islem_hisse, "islem_turu": "SATIŞ", "lot": islem_miktar, "fiyat": islem_fiyat, "toplam_tutar": toplam_tutar}, timeout=15)
-            except: pass
-            st.success(f"✅ {islem_hisse} satış işlemi başarılı!")
-            st.rerun()
-          else: st.error(f"❌ Yetersiz {islem_hisse} lotu!")
+    st.markdown("<br>", unsafe_allow_html=True)
+    islem_onay = st.button("Emri Gerçekleştir ve Tabloya Kaydet", use_container_width=True, key="onay_portfoy")
+
+    if islem_onay:
+      if islem_hisse == "Portföy Boş":
+          st.error("❌ Satış yapabileceğiniz bir varlık bulunmuyor!")
+      else:
+          toplam_tutar = islem_miktar * islem_fiyat
+          zaman_str = datetime.datetime.now(TZ_TR).strftime("%d.%m.%Y %H:%M:%S")
+
+          if islem_tipi == "ALIŞ":
+            if aktif_profil["nakit"] >= toplam_tutar:
+              aktif_profil["nakit"] -= toplam_tutar
+              aktif_profil["portfoy_hareketleri"].append({
+                  "Zaman": zaman_str, "Hisse": islem_hisse, "Tip": "ALIŞ",
+                  "Miktar": islem_miktar, "Fiyat": islem_fiyat, "Tutar": toplam_tutar,
+              })
+              try:
+                requests.post(WEBHOOK_URL, json={"zaman": zaman_str, "kullanici": secilen_kullanici, "hisse": islem_hisse, "islem_turu": "ALIŞ", "lot": islem_miktar, "fiyat": islem_fiyat, "toplam_tutar": toplam_tutar}, timeout=15)
+              except: pass
+              st.success(f"✅ {islem_hisse} alış işlemi başarılı!")
+              time.sleep(1)
+              st.rerun()
+            else: st.error("❌ Yetersiz Nakit Bakiye!")
+
+          elif islem_tipi == "SATIŞ":
+            mevcut_lot = portfoy_durumu.get(islem_hisse, {}).get("lot", 0)
+            if mevcut_lot >= islem_miktar:
+              aktif_profil["nakit"] += toplam_tutar
+              aktif_profil["portfoy_hareketleri"].append({
+                  "Zaman": zaman_str, "Hisse": islem_hisse, "Tip": "SATIŞ",
+                  "Miktar": islem_miktar, "Fiyat": islem_fiyat, "Tutar": toplam_tutar,
+              })
+              try:
+                requests.post(WEBHOOK_URL, json={"zaman": zaman_str, "kullanici": secilen_kullanici, "hisse": islem_hisse, "islem_turu": "SATIŞ", "lot": islem_miktar, "fiyat": islem_fiyat, "toplam_tutar": toplam_tutar}, timeout=15)
+              except: pass
+              st.success(f"✅ {islem_hisse} satış işlemi başarılı!")
+              time.sleep(1)
+              st.rerun()
+            else: st.error(f"❌ Yetersiz {islem_hisse} lotu! (Mevcut: {mevcut_lot})")
 
   with col_islem2:
     st.subheader("📊 Aktif Varlık Dağılımınız")
@@ -929,136 +944,6 @@ with tab_zincir:
   with col_bilgi:
       if motor_aktif:
           st.success("Tetikleyici Motor Devrede! Sistem her 30 saniyede bir güncel fiyatları tarayarak şartlı emirleri kontrol ediyor...")
-      else:
-          st.info("Motor kapalı. Bekleyen emirleriniz kayıtlı duruyor ancak piyasa izlenmiyor.")
+      elseŞu anki sohbet geçmişimizde üzerinde çalıştığımız bir kod bulunmuyor. Hangi konuya ait kodların tamamını istediğinizi (örneğin; POS komisyon simülatörü, B2B ödeme entegrasyonu veya farklı bir script) belirtebilir misiniz? 
 
-  st.markdown("---")
-  st.subheader("🔗 Yeni Emir & Zincir Senaryosu Kur")
-  
-  with st.form("zincir_kurulum_formu"):
-      st.markdown("**1. Adım: Ana Tetikleyici Emir** (İlk bu şartın gerçekleşmesi beklenir)")
-      col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-      z_hisse = col_m1.selectbox("Hisse / Varlık", tum_islem_varliklari)
-      z_tip = col_m2.selectbox("İşlem Tipi", ["ALIŞ", "SATIŞ"])
-      z_fiyat = col_m3.number_input("Hedef Fiyat (TL)", min_value=0.01, value=10.0, step=0.05)
-      z_lot = col_m4.number_input("Miktar (Lot)", min_value=1, value=100, step=10)
-
-      st.markdown("**2. Adım: Zincir Halka Emirler** (Ana emir gerçekleşirse sırayla aktif olurlar. İstemiyorsanız 0 bırakın)")
-      
-      zincir_adimlari = []
-      for i in range(1, 11):
-          with st.expander(f"Zincir Adım {i} (Opsiyonel)"):
-              zc1, zc2, zc3 = st.columns(3)
-              zincir_tip = zc1.selectbox(f"{i}. Tip", ["ALIŞ", "SATIŞ"], key=f"ztip_{i}")
-              zincir_fiyat = zc2.number_input(f"{i}. Hedef Fiyat", min_value=0.0, value=0.0, step=0.05, key=f"zfiy_{i}")
-              zincir_lot = zc3.number_input(f"{i}. Miktar", min_value=0, value=0, step=10, key=f"zlot_{i}")
-              zincir_adimlari.append({
-                  "adim": i, "tip": zincir_tip, "fiyat": zincir_fiyat, "lot": zincir_lot
-              })
-
-      z_kaydet = st.form_submit_button("✅ Emir Senaryosunu Sisteme Yükle")
-      if z_kaydet:
-          ana_emir_id = str(uuid.uuid4())[:8]
-          
-          st.session_state.zincir_emirler[secilen_kullanici].append({
-              "id": ana_emir_id,
-              "bagli_id": None,
-              "hisse": z_hisse,
-              "tip": z_tip,
-              "fiyat": z_fiyat,
-              "lot": z_lot,
-              "durum": "BEKLİYOR"
-          })
-          
-          onceki_id = ana_emir_id
-          eklenen_zincir_sayisi = 0
-          for adim in zincir_adimlari:
-              if adim["fiyat"] > 0 and adim["lot"] > 0:
-                  yeni_id = str(uuid.uuid4())[:8]
-                  st.session_state.zincir_emirler[secilen_kullanici].append({
-                      "id": yeni_id,
-                      "bagli_id": onceki_id,
-                      "hisse": z_hisse,
-                      "tip": adim["tip"],
-                      "fiyat": adim["fiyat"],
-                      "lot": adim["lot"],
-                      "durum": "PASİF (Önceki Bekleniyor)"
-                  })
-                  onceki_id = yeni_id
-                  eklenen_zincir_sayisi += 1
-                  
-          st.success(f"Ana emir ve {eklenen_zincir_sayisi} adet zincir adım başarıyla havuza eklendi!")
-          st.rerun()
-
-  st.markdown("---")
-  st.subheader("📋 Bekleyen ve Gerçekleşen Emir Havuzu")
-  
-  kullanici_emirleri = st.session_state.zincir_emirler[secilen_kullanici]
-  if kullanici_emirleri:
-      df_emirler = pd.DataFrame(kullanici_emirleri)
-      st.dataframe(df_emirler, use_container_width=True)
-      if st.button("🗑️ Gerçekleşenleri ve İptalleri Temizle"):
-          st.session_state.zincir_emirler[secilen_kullanici] = [e for e in kullanici_emirleri if e["durum"] in ["BEKLİYOR", "PASİF (Önceki Bekleniyor)"]]
-          st.rerun()
-  else:
-      st.info("Şu an havuzunuzda bekleyen hiçbir otomatik/şartlı emir yok.")
-
-  # OTOMATİK TARAMA MOTORU
-  if motor_aktif:
-      islem_oldu_mu = False
-      zaman_str = datetime.datetime.now(TZ_TR).strftime("%d.%m.%Y %H:%M:%S")
-      
-      def emir_gerceklesti_mi(hedef_id):
-          for e in kullanici_emirleri:
-              if e["id"] == hedef_id and e["durum"] == "GERÇEKLEŞTİ":
-                  return True
-          return False
-
-      for emir in kullanici_emirleri:
-          if emir["durum"] == "PASİF (Önceki Bekleniyor)":
-              if emir_gerceklesti_mi(emir["bagli_id"]):
-                  emir["durum"] = "BEKLİYOR"
-                  islem_oldu_mu = True
-
-          if emir["durum"] == "BEKLİYOR":
-              if emir["hisse"] in alternatif_varliklar:
-                  anlik_f = alternatif_fiyat_cek(emir["hisse"])
-              else:
-                  anlik_f = motor_hisse_anlik_fiyat(emir["hisse"])
-              
-              if anlik_f:
-                  toplam_tutar = emir["lot"] * anlik_f
-                  tetiklendi = False
-                  
-                  if emir["tip"] == "ALIŞ" and anlik_f <= emir["fiyat"]:
-                      if aktif_profil["nakit"] >= toplam_tutar:
-                          aktif_profil["nakit"] -= toplam_tutar
-                          tetiklendi = True
-                      else:
-                          emir["durum"] = "İPTAL (Yetersiz Nakit)"
-                          islem_oldu_mu = True
-                          
-                  elif emir["tip"] == "SATIŞ" and anlik_f >= emir["fiyat"]:
-                      sahip_olunan = sum([i["Miktar"] for i in aktif_profil["portfoy_hareketleri"] if i["Hisse"] == emir["hisse"] and i["Tip"] == "ALIŞ"]) - \
-                                     sum([i["Miktar"] for i in aktif_profil["portfoy_hareketleri"] if i["Hisse"] == emir["hisse"] and i["Tip"] == "SATIŞ"])
-                      if sahip_olunan >= emir["lot"]:
-                          aktif_profil["nakit"] += toplam_tutar
-                          tetiklendi = True
-                      else:
-                          emir["durum"] = "İPTAL (Yetersiz Lot)"
-                          islem_oldu_mu = True
-
-                  if tetiklendi:
-                      aktif_profil["portfoy_hareketleri"].append({
-                          "Zaman": zaman_str, "Hisse": emir["hisse"], "Tip": emir["tip"],
-                          "Miktar": emir["lot"], "Fiyat": anlik_f, "Tutar": toplam_tutar
-                      })
-                      emir["durum"] = "GERÇEKLEŞTİ"
-                      islem_oldu_mu = True
-                      try:
-                          requests.post(WEBHOOK_URL, json={"zaman": zaman_str, "kullanici": secilen_kullanici, "hisse": emir["hisse"], "islem_turu": emir["tip"], "lot": emir["lot"], "fiyat": anlik_f, "toplam_tutar": toplam_tutar}, timeout=5)
-                      except: pass
-
-      # Motorun Streamlit arayüzünü kilitlememesi için 30 saniye uyutup sayfayı yeniliyoruz.
-      time.sleep(30)
-      st.rerun()
+İhtiyacınız olan dili ve işlevi paylaştığınızda tüm yapıyı sizin için hemen hazırlayabilirim.
