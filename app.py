@@ -18,7 +18,7 @@ st.set_page_config(
 
 st.title("🦁 BİST & Çoklu Varlık Profesyonel Fon Yönetim Terminali")
 st.markdown(
-    "Tüm BİST Hisseleri Evreni, Sıralı Sinyaller (AL1, SAT1...), Canlı Fiyat"
+    "Tüm BİST Hisseleri Evreni, Sıralı Sinyaller (AL1, SAT1...), Gün İçi Fiyat"
     " Entegrasyonu, Günlük Nemalandırma (%0,12), Sanal Portföy Akıllı Radarı,"
     " Çoklu Kullanıcı Liderlik Matrisi ve Hızlı İşlem Paneli."
 )
@@ -90,10 +90,11 @@ baslangic_tarihi = (
     datetime.datetime.now(TZ_TR) - datetime.timedelta(days=365)
 ).strftime("%d-%m-%Y")
 
-
-@st.cache_data(ttl=3600)
+# DİKKAT: Veri önbellekleme süresi gün içi fiyatlar için 1 saatten 5 dakikaya (300sn) düşürüldü.
+@st.cache_data(ttl=300)
 def veri_cek_ve_hazirla(hisse):
   try:
+    # 1. İş Yatırım'dan Tarihsel Verileri (Geçmiş Kapanışları) Çek
     df = fetch_stock_data(
         symbols=[hisse], start_date=baslangic_tarihi, end_date=bitis_tarihi
     )
@@ -117,6 +118,26 @@ def veri_cek_ve_hazirla(hisse):
         )
         df = df.dropna(subset=["Tarih"]).sort_values("Tarih")
         df["Kapanis"] = pd.to_numeric(df[kapanis_kolonu], errors="coerce")
+        
+        # --- 2. HİBRİT ENTEGRASYON: Yahoo Finance'den Gün İçi Fiyatı Çek ve Tabloya Ekle ---
+        try:
+            yf_data = yf.Ticker(f"{hisse}.IS").history(period="1d")
+            if not yf_data.empty:
+                anlik_fiyat = float(yf_data["Close"].iloc[-1])
+                bugun = pd.to_datetime(datetime.datetime.now(TZ_TR).date())
+                son_tarih = pd.to_datetime(df["Tarih"].iloc[-1]).normalize()
+                
+                if bugun > son_tarih:
+                    # Yeni bir günse, güncel fiyatı yeni bir satır olarak tabloya ekle
+                    yeni_satir = pd.DataFrame({"Tarih": [bugun], "Kapanis": [anlik_fiyat]})
+                    df = pd.concat([df, yeni_satir], ignore_index=True)
+                else:
+                    # Aynı gün içindeysek, gün sonu fiyatını canlı fiyatla güncelle
+                    df.loc[df.index[-1], "Kapanis"] = anlik_fiyat
+        except:
+            pass # Eğer Yahoo o an yanıt vermezse İş Yatırım verisiyle devam et
+        # ---------------------------------------------------------------------------------
+        
         return df
   except:
     pass
@@ -290,13 +311,11 @@ def arsekten_verileri_yukle():
   }
   
   try:
-    # Google E-Tablo gecikmelerini tolere etmek için timeout süresi 10'dan 30'a çıkarıldı.
     response = requests.get(WEBHOOK_URL, timeout=30)
     if response.status_code == 200:
       try:
         veri = response.json()
       except Exception as e:
-        # Eğer Apps Script ayarları hatalıysa Google bir giriş sayfası (HTML) gönderir ve JSON hatası verir.
         st.error("⚠️ BİLGİ: Google E-Tablo JSON verisi göndermedi. Apps Script ayarlarında 'Execute as: ME' ve 'Who has access: ANYONE' olduğundan emin olun.")
         return varsayilan_kullanicilar
 
@@ -401,7 +420,7 @@ with tab_tekli:
       index=default_index,
   )
 
-  with st.spinner(f"{secilen_hisse} verileri yükleniyor..."):
+  with st.spinner(f"{secilen_hisse} gün içi verileri ve haberleri yükleniyor..."):
     df = veri_cek_ve_hazirla(secilen_hisse)
     haberler, kap_bildirimleri = haberleri_ve_kap_getir(secilen_hisse)
 
@@ -421,7 +440,7 @@ with tab_tekli:
     renk = "🟢" if karar == "AL" else ("🔴" if karar == "SAT" else "🟡")
 
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Son Kapanış Fiyatı", f"{son_fiyat:.2f} TL")
+    col1.metric("Son İşlem Fiyatı (15 Dk Gecikmeli)", f"{son_fiyat:.2f} TL")
     col2.metric("RSI (14)", f"{son_rsi:.1f}")
     col3.metric("İdeal Alım (Destek)", f"{ideal_alim:.2f} TL")
     col4.metric("İdeal Satış (Direnç)", f"{ideal_satim:.2f} TL")
@@ -457,7 +476,7 @@ with tab_tekli:
       else:
         st.info("Yakın zamanda eşleşen KAP bildirimi bulunamadı.")
   else:
-    st.warning("Bu hisse için yeterli tarihsel veri alınamadı.")
+    st.warning("Bu hisse için yeterli veri alınamadı.")
 
 with tab_matris:
   st.subheader("🌐 BİST Genel Tarama ve Sıralı Sinyal Matrisi")
