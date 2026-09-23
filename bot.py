@@ -1,3 +1,5 @@
+import datetime
+TZ_TR = datetime.timezone(datetime.timedelta(hours=3))
 import os
 import smtplib
 from email.message import EmailMessage
