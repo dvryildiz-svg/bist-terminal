@@ -555,7 +555,7 @@ with tab_matris:
         varsayilan_fiyat = float(eslesen_satir["Son Fiyat (TL)"].values[0]) if not eslesen_satir.empty else 10.0
       else:
         varsayilan_fiyat = 0.0
-      hizli_fiyat = st.number_input("Birim Fiyat (TL)", min_value=0.01, value=varsayilan_fiyat, step=0.05, format="%.2f")
+      hizli_fiyat = st.number_input("Birim Fiyat (TL)", min_value=0.01, value=varsayilan_fiyat, step=0.05, format="%.2f", key=f"hizli_fiy_{hizli_hisse}")
 
     st.markdown("<br>", unsafe_allow_html=True)
     hizli_onay = st.button("🚀 Hızlı Emri Gerçekleştir ve Kaydet", use_container_width=True)
@@ -761,7 +761,7 @@ with tab_portfoy:
   st.markdown("---")
   col_islem1, col_islem2 = st.columns(2)
 
-  # MANUEL EMİR GİRİŞ FORMU (AKILLI FİLTRELİ)
+  # MANUEL EMİR GİRİŞ FORMU (AKILLI FİLTRELİ VE DİNAMİK KEY'Lİ)
   with col_islem1:
     st.subheader("📝 Emir Girişi (Alış / Satış)")
 
@@ -785,11 +785,11 @@ with tab_portfoy:
     else:
         otomatik_fiyat = 0.0
 
-    islem_miktar = st.number_input("Miktar / Lot", min_value=1, value=1000, step=100, key="miktar_portfoy")
-    islem_fiyat = st.number_input("Birim Fiyat (TL) [Canlı]", min_value=0.01, value=float(otomatik_fiyat), step=0.05, format="%.2f", key="fiyat_portfoy")
+    islem_miktar = st.number_input("Miktar / Lot", min_value=1, value=1000, step=100, key=f"mik_portfoy_{islem_hisse}")
+    islem_fiyat = st.number_input("Birim Fiyat (TL) [Canlı]", min_value=0.01, value=float(otomatik_fiyat), step=0.05, format="%.2f", key=f"fiy_portfoy_{islem_hisse}")
 
     st.markdown("<br>", unsafe_allow_html=True)
-    islem_onay = st.button("Emri Gerçekleştir ve Tabloya Kaydet", use_container_width=True, key="onay_portfoy")
+    islem_onay = st.button("Emri Gerçekleştir ve Tabloya Kaydet", use_container_width=True, key=f"onay_portfoy_{islem_hisse}")
 
     if islem_onay:
       if islem_hisse == "Portföy Boş":
@@ -933,7 +933,6 @@ with tab_liderlik:
         hide_index=True,
     )
 
-# --- ZİNCİR EMİRLER SEKME ---
 # --- ZİNCİR EMİRLER SEKME ---
 with tab_zincir:
   st.subheader("⚙️ Otomatik Alım-Satım & Zincir Emir Modülü")
