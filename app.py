@@ -21,7 +21,7 @@ st.set_page_config(
 st.title("🦁 BİST & Çoklu Varlık Profesyonel Fon Yönetim Terminali")
 st.markdown(
     "Tüm BİST Hisseleri Evreni, Sıralı Sinyaller, Gün İçi Fiyat Entegrasyonu,"
-    " Sanal Portföy Grafikleri, Akıllı İşlem Panelleri ve **Dinamik Fiyatlı Zincir Emir Motoru**."
+    " Sanal Portföy Grafikleri, Akıllı İşlem Panelleri ve **Kararlı Zincir Emir Motoru**."
 )
 
 # GARANTİLİ WEBHOOK URL'NİZ
@@ -186,10 +186,10 @@ def akilli_analiz_hesapla(df, kap_bildirimleri, haberler):
 
   if son_rsi < 35:
     puan += 2
-    nedenler.append(f"RSI aşırı satımda ({son_rsi:.1f}), tepki alımı gelebilir.")
+    nedenler.append(f"RSI aşırı satımda ({son_rsi:.1f}).")
   elif son_rsi > 65:
     puan -= 2
-    nedenler.append(f"RSI aşırı alımda ({son_rsi:.1f}), dikkatli olunmalı.")
+    nedenler.append(f"RSI aşırı alımda ({son_rsi:.1f}).")
   else:
     nedenler.append(f"RSI nötr bölgede ({son_rsi:.1f}).")
 
@@ -219,10 +219,10 @@ def akilli_analiz_hesapla(df, kap_bildirimleri, haberler):
 
   if haber_skoru > 0:
     puan += 2
-    nedenler.append(f"Haber akışı olumlu (Skor: +{haber_skoru}).")
+    nedenler.append(f"Haber akışı olumlu.")
   elif haber_skoru < 0:
     puan -= 2
-    nedenler.append(f"Haber akışı olumsuz (Skor: {haber_skoru}).")
+    nedenler.append(f"Haber akışı olumsuz.")
   else:
     nedenler.append("Haber akışı dengeli.")
 
@@ -575,10 +575,10 @@ with tab_liderlik:
   st.dataframe(pd.DataFrame(liderlik), use_container_width=True)
 
 
-# --- 5. SEKME: OTOMATİK & ZİNCİR EMİRLER (AKILLI HAVUZ & DİNAMİK FİYAT MİMARİSİ) ---
+# --- 5. SEKME: OTOMATİK & ZİNCİR EMİRLER (KESİN ÇÖZÜM: ST.SESSION_STATE İLE EMİR SAKLAMA) ---
 with tab_zincir:
   st.subheader("⚙️ Otomatik Alım-Satım & Zincir Emir Modülü")
-  st.markdown("Bu ekrandan hedef fiyatlar belirleyerek birbirine bağlı 10 slotlu zincir emirler kurabilirsiniz.")
+  st.markdown("Bu ekrandan hedef fiyatlar belirleyerek dilediğin kadar bağımsız zincir emir kurabilir ve havuzda biriktirebilirsin.")
 
   col_motor, col_bilgi = st.columns([1, 2])
   with col_motor:
@@ -606,72 +606,73 @@ with tab_zincir:
           birim_maliyet = v["toplam_maliyet"] / v["lot"]
           portfoy_secenekleri.append(f"{h} (Portföyde: {v['lot']:,} Lot | Maliyet: {birim_maliyet:.2f} TL)")
 
-  with st.form("zincir_kurulum_formu"):
-      st.markdown("**1. Adım: Ana Tetikleyici Emir**")
-      col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+  # --- KRİTİK DÜZELTME: FORM YERİNE NORMAL WIDGET + CALLBACK İLE EMİR KAYDI ---
+  # Böylece sayfayı yenilese dahi önceki emirler session_state içinde güvenle saklanır.
+  col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+  
+  z_tip = col_m2.selectbox("İşlem Tipi", ["SATIŞ", "ALIŞ"], key="z_tip_fix")
+
+  if z_tip == "SATIŞ":
+      satis_havuzu = []
+      if portfoy_secenekleri: satis_havuzu.extend(portfoy_secenekleri)
+      satis_havuzu.append("--- BİST 30 HİSSELERİ (Açığa Satış Opsiyonu) ---")
+      satis_havuzu.extend(bist_30)
       
-      z_tip = col_m2.selectbox("İşlem Tipi", ["SATIŞ", "ALIŞ"], key="z_tip_dyn")
+      secilen_ham_veri = col_m1.selectbox("Hisse / Varlık", satis_havuzu, key="z_hisse_s_fix")
+      z_hisse = secilen_ham_veri.split(" ")[0] if "---" not in secilen_ham_veri else "THYAO"
+  else:
+      z_hisse = col_m1.selectbox("Hisse / Varlık", tum_islem_varliklari, key="z_hisse_a_fix")
 
-      if z_tip == "SATIŞ":
-          satis_havuzu = []
-          if portfoy_secenekleri: satis_havuzu.extend(portfoy_secenekleri)
-          satis_havuzu.append("--- BİST 30 HİSSELERİ (Açığa Satış Opsiyonu) ---")
-          satis_havuzu.extend(bist_30)
-          
-          secilen_ham_veri = col_m1.selectbox("Hisse / Varlık", satis_havuzu, key="z_hisse_s_dyn")
-          z_hisse = secilen_ham_veri.split(" ")[0] if "---" not in secilen_ham_veri else "THYAO"
+  # Dinamik Fiyat Çekici (Hisse değiştikçe hedef fiyat otomatik o anki fiyata güncellenir)
+  if z_hisse != "---":
+      if z_hisse in alternatif_varliklar:
+          anlik_baz_fiyat = alternatif_fiyat_cek(z_hisse)
       else:
-          z_hisse = col_m1.selectbox("Hisse / Varlık", tum_islem_varliklari, key="z_hisse_a_dyn")
+          anlik_baz_fiyat = motor_hisse_anlik_fiyat(z_hisse)
+          if not anlik_baz_fiyat:
+              df_temp = veri_cek_ve_hazirla(z_hisse)
+              anlik_baz_fiyat = float(df_temp["Kapanis"].iloc[-1]) if (df_temp is not None and not df_temp.empty) else 50.0
+  else:
+      anlik_baz_fiyat = 10.0
 
-      # --- DİNAMİK FİYAT ÇEKİCİ ---
+  z_fiyat = col_m3.number_input("Hedef Fiyat (TL)", min_value=0.01, value=float(anlik_baz_fiyat), step=0.05, format="%.2f", key=f"z_fiyat_fix_{z_hisse}")
+  z_lot = col_m4.number_input("Miktar (Lot)", min_value=1, value=100, step=10, key=f"z_lot_fix_{z_hisse}")
+
+  st.markdown("**2. Adım: Zincir Halka Emirler (10 Slot)**")
+  zincir_adimlari = []
+  for i in range(1, 11):
+      with st.expander(f"Zincir Adım {i} (Opsiyonel)"):
+          zc1, zc2, zc3 = st.columns(3)
+          zincir_tip = zc1.selectbox(f"{i}. Tip", ["SATIŞ", "ALIŞ"], key=f"ztip_fix_{i}")
+          zincir_fiyat = zc2.number_input(f"{i}. Hedef Fiyat", min_value=0.0, value=0.0, step=0.05, key=f"zfiy_fix_{i}")
+          zincir_lot = zc3.number_input(f"{i}. Miktar", min_value=0, value=0, step=10, key=f"zlot_fix_{i}")
+          zincir_adimlari.append({"adim": i, "tip": zincir_tip, "fiyat": zincir_fiyat, "lot": zincir_lot})
+
+  if st.button("✅ Emir Senaryosunu Sisteme Yükle", use_container_width=True, key="btn_zincir_yukle_fix"):
       if z_hisse != "---":
-          if z_hisse in alternatif_varliklar:
-              anlik_baz_fiyat = alternatif_fiyat_cek(z_hisse)
-          else:
-              anlik_baz_fiyat = motor_hisse_anlik_fiyat(z_hisse)
-              if not anlik_baz_fiyat:
-                  df_temp = veri_cek_ve_hazirla(z_hisse)
-                  anlik_baz_fiyat = float(df_temp["Kapanis"].iloc[-1]) if (df_temp is not None and not df_temp.empty) else 50.0
-      else:
-          anlik_baz_fiyat = 10.0
-
-      z_fiyat = col_m3.number_input("Hedef Fiyat (TL)", min_value=0.01, value=float(anlik_baz_fiyat), step=0.05, format="%.2f", key=f"z_fiyat_input_{z_hisse}")
-      z_lot = col_m4.number_input("Miktar (Lot)", min_value=1, value=100, step=10, key=f"z_lot_input_{z_hisse}")
-
-      st.markdown("**2. Adım: Zincir Halka Emirler (10 Slot)**")
-      zincir_adimlari = []
-      for i in range(1, 11):
-          with st.expander(f"Zincir Adım {i} (Opsiyonel)"):
-              zc1, zc2, zc3 = st.columns(3)
-              zincir_tip = zc1.selectbox(f"{i}. Tip", ["SATIŞ", "ALIŞ"], key=f"ztip_dyn_{i}")
-              zincir_fiyat = zc2.number_input(f"{i}. Hedef Fiyat", min_value=0.0, value=0.0, step=0.05, key=f"zfiy_dyn_{i}")
-              zincir_lot = zc3.number_input(f"{i}. Miktar", min_value=0, value=0, step=10, key=f"zlot_dyn_{i}")
-              zincir_adimlari.append({"adim": i, "tip": zincir_tip, "fiyat": zincir_fiyat, "lot": zincir_lot})
-
-      if st.form_submit_button("✅ Emir Senaryosunu Sisteme Yükle"):
-          if z_hisse != "---":
-              ana_emir_id = str(uuid.uuid4())[:8]
-              st.session_state.zincir_emirler[secilen_kullanici].append({"id": ana_emir_id, "bagli_id": None, "hisse": z_hisse, "tip": z_tip, "fiyat": z_fiyat, "lot": z_lot, "durum": "BEKLİYOR"})
-              onceki_id = ana_emir_id
-              eklenen = 0
-              for adim in zincir_adimlari:
-                  if adim["fiyat"] > 0 and adim["lot"] > 0:
-                      yeni_id = str(uuid.uuid4())[:8]
-                      st.session_state.zincir_emirler[secilen_kullanici].append({"id": yeni_id, "bagli_id": onceki_id, "hisse": z_hisse, "tip": adim["tip"], "fiyat": adim["fiyat"], "lot": adim["lot"], "durum": "PASİF (Önceki Bekleniyor)"})
-                      onceki_id = yeni_id; eklenen += 1
-              st.success(f"Ana emir ve {eklenen} adet zincir adım başarıyla yüklendi!")
-              st.rerun()
+          ana_emir_id = str(uuid.uuid4())[:8]
+          st.session_state.zincir_emirler[secilen_kullanici].append({"id": ana_emir_id, "bagli_id": None, "hisse": z_hisse, "tip": z_tip, "fiyat": z_fiyat, "lot": z_lot, "durum": "BEKLİYOR"})
+          onceki_id = ana_emir_id
+          eklenen = 0
+          for adim in zincir_adimlari:
+              if adim["fiyat"] > 0 and adim["lot"] > 0:
+                  yeni_id = str(uuid.uuid4())[:8]
+                  st.session_state.zincir_emirler[secilen_kullanici].append({"id": yeni_id, "bagli_id": onceki_id, "hisse": z_hisse, "tip": adim["tip"], "fiyat": adim["fiyat"], "lot": adim["lot"], "durum": "PASİF (Önceki Bekleniyor)"})
+                  onceki_id = yeni_id; eklenen += 1
+          st.success(f"Ana emir ve {eklenen} adet zincir adım başarıyla havuza kaydedildi!")
+          time.sleep(1)
+          st.rerun()
 
   st.markdown("---")
-  st.subheader("📋 Bekleyen Emirler")
+  st.subheader("📋 Bekleyen Emirler Havuzu")
   kullanici_emirleri = st.session_state.zincir_emirler[secilen_kullanici]
   if kullanici_emirleri:
       st.dataframe(pd.DataFrame(kullanici_emirleri), use_container_width=True)
-      if st.button("🗑️ Tamamlananları Temizle", key="temizle_zincir_dyn"):
+      if st.button("🗑️ Tamamlananları/İptalleri Temizle", key="temizle_zincir_fix"):
           st.session_state.zincir_emirler[secilen_kullanici] = [e for e in kullanici_emirleri if e["durum"] in ["BEKLİYOR", "PASİF (Önceki Bekleniyor)"]]
           st.rerun()
   else:
-      st.info("Bekleyen emir yok.")
+      st.info("Havuzda bekleyen emir bulunmuyor.")
 
   if motor_aktif:
       z_str = datetime.datetime.now(TZ_TR).strftime("%d.%m.%Y %H:%M:%S")
