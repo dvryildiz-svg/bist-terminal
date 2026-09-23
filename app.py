@@ -540,25 +540,25 @@ with tab_matris:
     with col_h1:
       if hizli_tip == "SATIŞ":
         if sahip_olunan_hisseler:
-          hizli_hisse = st.selectbox("Hisse Seçin", sahip_olunan_hisseler)
+          hizli_hisse = st.selectbox("Hisse Seçin", sahip_olunan_hisseler, key="hizli_hisse_satis")
         else:
-          hizli_hisse = st.selectbox("Hisse Seçin", ["Portföy Boş"], disabled=True)
+          hizli_hisse = st.selectbox("Hisse Seçin", ["Portföy Boş"], disabled=True, key="hizli_hisse_bos")
       else:
-        hizli_hisse = st.selectbox("Hisse Seçin", df_gosterim["Hisse"].tolist())
+        hizli_hisse = st.selectbox("Hisse Seçin", df_gosterim["Hisse"].tolist(), key="hizli_hisse_alis")
       
     with col_h3:
-      hizli_lot = st.number_input("Lot Miktarı", min_value=1, value=1000, step=100)
+      hizli_lot = st.number_input("Lot Miktarı", min_value=1, value=1000, step=100, key=f"hizli_mik_{hizli_hisse}")
       
     with col_h4:
       if hizli_hisse != "Portföy Boş":
         eslesen_satir = df_gosterim[df_gosterim["Hisse"] == hizli_hisse]
         varsayilan_fiyat = float(eslesen_satir["Son Fiyat (TL)"].values[0]) if not eslesen_satir.empty else 10.0
       else:
-        varsayilan_fiyat = 0.0
-      hizli_fiyat = st.number_input("Birim Fiyat (TL)", min_value=0.01, value=varsayilan_fiyat, step=0.05, format="%.2f", key=f"hizli_fiy_{hizli_hisse}")
+        varsayilan_fiyat = 10.0
+      hizli_fiyat = st.number_input("Birim Fiyat (TL)", min_value=0.01, value=float(varsayilan_fiyat), step=0.05, format="%.2f", key=f"hizli_fiy_{hizli_hisse}")
 
     st.markdown("<br>", unsafe_allow_html=True)
-    hizli_onay = st.button("🚀 Hızlı Emri Gerçekleştir ve Kaydet", use_container_width=True)
+    hizli_onay = st.button("🚀 Hızlı Emri Gerçekleştir ve Kaydet", use_container_width=True, key=f"hizli_btn_{hizli_hisse}")
 
     if hizli_onay:
       if hizli_hisse == "Portföy Boş":
@@ -761,7 +761,7 @@ with tab_portfoy:
   st.markdown("---")
   col_islem1, col_islem2 = st.columns(2)
 
-  # MANUEL EMİR GİRİŞ FORMU (AKILLI FİLTRELİ VE DİNAMİK KEY'Lİ)
+  # MANUEL EMİR GİRİŞ FORMU (GÜVENLİ & DİNAMİK)
   with col_islem1:
     st.subheader("📝 Emir Girişi (Alış / Satış)")
 
@@ -770,11 +770,11 @@ with tab_portfoy:
     if islem_tipi == "SATIŞ":
         sahip_olunan_varliklar = [h for h, veri in portfoy_durumu.items() if veri["lot"] > 0]
         if sahip_olunan_varliklar:
-            islem_hisse = st.selectbox("Varlık / Hisse Seçin", sahip_olunan_varliklar, key="secilen_varlik_portfoy")
+            islem_hisse = st.selectbox("Varlık / Hisse Seçin", sahip_olunan_varliklar, key="secilen_varlik_portfoy_satis")
         else:
-            islem_hisse = st.selectbox("Varlık / Hisse Seçin", ["Portföy Boş"], disabled=True, key="secilen_varlik_portfoy")
+            islem_hisse = st.selectbox("Varlık / Hisse Seçin", ["Portföy Boş"], disabled=True, key="secilen_varlik_portfoy_bos")
     else:
-        islem_hisse = st.selectbox("Varlık / Hisse Seçin", tum_islem_varliklari, key="secilen_varlik_portfoy")
+        islem_hisse = st.selectbox("Varlık / Hisse Seçin", tum_islem_varliklari, key="secilen_varlik_portfoy_alis")
 
     if islem_hisse != "Portföy Boş":
         if islem_hisse in alternatif_varliklar:
@@ -783,7 +783,7 @@ with tab_portfoy:
             df_gecici = veri_cek_ve_hazirla(islem_hisse)
             otomatik_fiyat = float(df_gecici["Kapanis"].iloc[-1]) if (df_gecici is not None and not df_gecici.empty) else 10.0
     else:
-        otomatik_fiyat = 0.0
+        otomatik_fiyat = 10.0
 
     islem_miktar = st.number_input("Miktar / Lot", min_value=1, value=1000, step=100, key=f"mik_portfoy_{islem_hisse}")
     islem_fiyat = st.number_input("Birim Fiyat (TL) [Canlı]", min_value=0.01, value=float(otomatik_fiyat), step=0.05, format="%.2f", key=f"fiy_portfoy_{islem_hisse}")
